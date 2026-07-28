@@ -4,11 +4,14 @@
 //|  Strategy:                                                       |
 //|   1. Trend on a higher (configurable) timeframe via a moving      |
 //|      average filter.                                              |
-//|   2. Open a 0.01 lot trade in the trend direction, fixed TP/SL    |
-//|      (default 6 USD each on 0.01 lot Gold => a 6.00 price move).  |
+//|   2. Open a 0.01 lot trade ONLY when a candle rejects a pivot     |
+//|      level IN the trend direction, with fixed TP/SL (default      |
+//|      6 USD each on 0.01 lot Gold => a 6.00 price move).           |
 //|   3. Trailing stop that activates after a small favourable move.  |
 //|                                                                  |
 //|  Added features:                                                 |
+//|   - Entry is gated by a pivot-point rejection aligned with trend  |
+//|     (bullish rejection at support in an uptrend -> buy, etc.).    |
 //|   - Session window in PKT (default 12:00-20:00).                  |
 //|   - No NEW trades outside the window / during a news blackout,    |
 //|     but running trades are left to hit their own TP/SL.           |
@@ -20,7 +23,7 @@
 //|   - Daily pivot points drawn as continuous horizontal S/R lines.  |
 //+------------------------------------------------------------------+
 #property copyright "Session-3"
-#property version   "2.00"
+#property version   "3.00"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -51,6 +54,10 @@ input ENUM_APPLIED_PRICE InpMAPrice        = PRICE_CLOSE;    // Trend MA applied
 input group "=== Entry ==="
 input double             InpLots           = 0.01;           // Lot size
 input long               InpMagic          = 990033;         // Magic number
+
+input group "=== Pivot-Rejection Entry Trigger ==="
+input ENUM_TIMEFRAMES    InpSignalTF       = PERIOD_CURRENT; // Timeframe whose candles are checked for rejections
+input double             InpRejectionBuffer = 0.0;           // Extra distance (USD/price) the body must close beyond the level
 
 input group "=== Targets & Trailing ==="
 input ENUM_TARGET_MODE   InpTargetMode     = MODE_MONEY_USD; // How TP/SL/trailing inputs are read
@@ -93,6 +100,10 @@ long      g_stopsLevelPts;
 
 datetime  g_newsTimes[];        // parsed manual news times (PKT wall-clock)
 datetime  g_lastPivotPeriod = 0;
+datetime  g_lastSignalBar   = 0;
+
+double    g_levels[7];          // P, R1, R2, R3, S1, S2, S3 (for rejection detection)
+int       g_numLevels = 7;
 
 // calendar throttle
 bool      g_calBlackout   = false;
@@ -490,8 +501,6 @@ void ComputePivots(double H, double L, double C, double O,
 //+------------------------------------------------------------------+
 void UpdatePivots()
   {
-   if(!InpShowPivots) return;
-
    datetime curPeriod = iTime(_Symbol, InpPivotTF, 0);
    if(curPeriod == 0 || curPeriod == g_lastPivotPeriod) return;
 
@@ -504,16 +513,74 @@ void UpdatePivots()
    double P, R1, R2, R3, S1, S2, S3;
    ComputePivots(H, L, C, O, P, R1, R2, R3, S1, S2, S3);
 
-   DrawHLine("PIV_P",  P,  clrGold,       STYLE_SOLID, 2, "Pivot");
-   DrawHLine("PIV_R1", R1, clrTomato,     STYLE_DOT,   1, "R1");
-   DrawHLine("PIV_R2", R2, clrTomato,     STYLE_DOT,   1, "R2");
-   DrawHLine("PIV_R3", R3, clrTomato,     STYLE_DASH,  1, "R3");
-   DrawHLine("PIV_S1", S1, clrDodgerBlue, STYLE_DOT,   1, "S1");
-   DrawHLine("PIV_S2", S2, clrDodgerBlue, STYLE_DOT,   1, "S2");
-   DrawHLine("PIV_S3", S3, clrDodgerBlue, STYLE_DASH,  1, "S3");
+   // store for the rejection entry logic (needed even if lines are hidden)
+   g_levels[0] = P;
+   g_levels[1] = R1;
+   g_levels[2] = R2;
+   g_levels[3] = R3;
+   g_levels[4] = S1;
+   g_levels[5] = S2;
+   g_levels[6] = S3;
+
+   if(InpShowPivots)
+     {
+      DrawHLine("PIV_P",  P,  clrGold,       STYLE_SOLID, 2, "Pivot");
+      DrawHLine("PIV_R1", R1, clrTomato,     STYLE_DOT,   1, "R1");
+      DrawHLine("PIV_R2", R2, clrTomato,     STYLE_DOT,   1, "R2");
+      DrawHLine("PIV_R3", R3, clrTomato,     STYLE_DASH,  1, "R3");
+      DrawHLine("PIV_S1", S1, clrDodgerBlue, STYLE_DOT,   1, "S1");
+      DrawHLine("PIV_S2", S2, clrDodgerBlue, STYLE_DOT,   1, "S2");
+      DrawHLine("PIV_S3", S3, clrDodgerBlue, STYLE_DASH,  1, "S3");
+      ChartRedraw();
+     }
 
    g_lastPivotPeriod = curPeriod;
-   ChartRedraw();
+  }
+
+//+------------------------------------------------------------------+
+//| Detect a pivot-level rejection on the last closed candle         |
+//|  dir = +1 buy, -1 sell, 0 none/ambiguous                         |
+//+------------------------------------------------------------------+
+bool CheckRejection(int &dir)
+  {
+   dir = 0;
+   double buf = DistanceToPrice(InpRejectionBuffer);
+
+   double O = iOpen(_Symbol,  InpSignalTF, 1);
+   double H = iHigh(_Symbol,  InpSignalTF, 1);
+   double L = iLow(_Symbol,   InpSignalTF, 1);
+   double C = iClose(_Symbol, InpSignalTF, 1);
+   if(O <= 0 || H <= 0 || L <= 0 || C <= 0) return false;
+
+   int sellVotes = 0, buyVotes = 0;
+   for(int i = 0; i < g_numLevels; i++)
+     {
+      double lvl = g_levels[i];
+      if(lvl <= 0) continue;
+
+      // Bearish rejection at resistance: wick pierced above, body closed below
+      if(H >= lvl && C <= lvl - buf && C < O)
+         sellVotes++;
+
+      // Bullish rejection at support: wick pierced below, body closed above
+      if(L <= lvl && C >= lvl + buf && C > O)
+         buyVotes++;
+     }
+
+   if(sellVotes > 0 && buyVotes == 0) { dir = -1; return true; }
+   if(buyVotes  > 0 && sellVotes == 0) { dir =  1; return true; }
+   return false;   // none, or conflicting signals -> skip
+  }
+
+//+------------------------------------------------------------------+
+//| True once per newly-closed signal-timeframe candle               |
+//+------------------------------------------------------------------+
+bool IsNewSignalBar()
+  {
+   datetime t = iTime(_Symbol, InpSignalTF, 0);
+   if(t == 0 || t == g_lastSignalBar) return false;
+   g_lastSignalBar = t;
+   return true;
   }
 
 //+------------------------------------------------------------------+
@@ -521,8 +588,12 @@ void UpdatePivots()
 //+------------------------------------------------------------------+
 void OnTick()
   {
-   UpdatePivots();        // visuals
+   UpdatePivots();        // pivots (also stores levels for rejection entries)
    ManageTrailing();      // always manage exits, even outside the session
+
+   // Track candle closes every tick so rejections are only ever acted on once,
+   // and rejections that occur while a position is open are consumed (ignored).
+   bool newBar = IsNewSignalBar();
 
    bool canOpen = IsWithinSession() && !IsNewsBlackout();
    if(!canOpen) return;   // no NEW trades outside window / during news
@@ -530,12 +601,19 @@ void OnTick()
    int positions = CountPositions();
    if(positions == 0)
      {
-      int dir = TrendDirection();
-      if(dir != 0)
-         OpenTrade(dir);
+      // First trade of a cycle: only on a pivot rejection that agrees with trend.
+      if(newBar)
+        {
+         int trend = TrendDirection();
+         int rej;
+         if(trend != 0 && CheckRejection(rej) && rej == trend)
+            OpenTrade(trend);
+        }
      }
    else if(InpEnableGrid)
      {
+      // Position already open: TrendTrailing's 4-USD grid adds more (rejections
+      // are ignored until flat, per configuration).
       ManageGrid();
      }
   }

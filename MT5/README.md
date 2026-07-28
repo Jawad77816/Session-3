@@ -1,7 +1,8 @@
 # TrendTrailingEA (MT5)
 
-An Expert Advisor that trades in the direction of a higher-timeframe trend, with
-a fixed TP/SL and a trailing stop that activates after a small favourable move.
+An Expert Advisor that enters on a **pivot-point rejection in the direction of a
+higher-timeframe trend**, then manages the trade with a fixed TP/SL, a trailing
+stop, and optional grid averaging — inside a PKT session window with a news filter.
 
 ## What it does
 
@@ -9,8 +10,17 @@ a fixed TP/SL and a trailing stop that activates after a small favourable move.
    higher timeframe (`InpTrendTF`, default H1). If the last closed higher-TF
    candle closed **above** the MA → uptrend (buy); **below** → downtrend (sell).
    Change the timeframe/MA freely in the inputs.
-2. **Entry.** Opens `InpLots` (default 0.01) in the trend direction with a fixed
-   take-profit and stop-loss.
+2. **Entry — pivot rejection *in the trend direction*.** The first trade of a cycle
+   only opens when a completed candle on `InpSignalTF` **rejects a pivot level** and
+   that rejection agrees with the trend:
+   - Uptrend + **bullish** rejection at a level (wick pierces below, body closes
+     back above) → **BUY**.
+   - Downtrend + **bearish** rejection (wick pierces above, body closes back below)
+     → **SELL**.
+   A rejection against the trend, or on a candle with conflicting signals, is
+   ignored. `InpRejectionBuffer` can require the body to close a bit beyond the
+   level. After the first trade opens, the **grid** takes over (below) and further
+   rejections are ignored until the position is flat.
 3. **Trailing.** Once price moves in favour by `InpTrailStart` (default 0.3), the
    stop-loss starts following price, keeping a gap of `InpTrailDistance` behind it,
    only ever moving in the favourable direction.
@@ -103,6 +113,8 @@ To keep it correct on any symbol/lot, the EA has `InpTargetMode`:
 | `InpTrendTF` | H1 | Higher timeframe for trend |
 | `InpMAPeriod` / `InpMAMethod` | 50 / EMA | Trend MA |
 | `InpLots` | 0.01 | Lot size |
+| `InpSignalTF` | current | Candle timeframe checked for pivot rejections |
+| `InpRejectionBuffer` | 0 | Extra distance body must close beyond the level |
 | `InpTargetMode` | MONEY_USD | Interpret targets as USD or price |
 | `InpTakeProfit` / `InpStopLoss` | 6 / 6 | TP / SL |
 | `InpTrailStart` | 0.3 | Favourable move before trailing starts |
