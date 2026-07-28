@@ -137,6 +137,22 @@ To keep it correct on any symbol/lot, the EA has `InpTargetMode`:
 | `InpShowDashboard` | true | On-chart info panel (left side) |
 | `InpDebugLogs` | false | Journal log of every trailing/grid decision |
 
+## v5.0 — independent BUY/SELL cycles and trend-flip rules
+
+- **Grid adds stop on trend flip.** If the HTF trend no longer matches a cycle's
+  direction, that cycle gets **no more grid adds** (dashboard shows
+  `Grid: PAUSED (trend flipped)`). Open trades are untouched. If the trend
+  re-aligns, adds resume.
+- **Nothing is closed on a trend change.** Running trades always exit on their
+  own TP/SL/trailing.
+- **Both directions can run at once.** A trend flip allows a fresh cycle in the
+  new direction (on its own pivot rejection) while the old cycle keeps running.
+  One cycle per direction; each side has its own base trade, grid, and trailing.
+- ⚠️ **Requires a HEDGING account.** On a netting account, opposite trades offset
+  each other instead of coexisting — the EA prints a warning on init if it
+  detects netting. Note both sides open = double margin in use, and the two
+  cycles partially hedge each other's floating P/L.
+
 ## v4.0 — trailing/grid fixes and dashboard
 
 - **Trailing hardened.** Silent skip conditions removed (broker stop-level is now

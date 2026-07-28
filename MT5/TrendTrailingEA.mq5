@@ -17,9 +17,21 @@
 //|   - Grid: every N USD of adverse move against the FIRST trade,    |
 //|     add another same-direction trade. PRICE-DRIVEN ONLY - never   |
 //|     waits for a rejection.  *** Averaging into losers - risk. *** |
+//|     Adds PAUSE while the HTF trend no longer matches the cycle    |
+//|     direction (and resume if the trend comes back).               |
+//|   - BUY and SELL cycles are independent: a trend flip starts a    |
+//|     new cycle in the new direction WITHOUT closing the old one    |
+//|     (requires a HEDGING account).                                 |
 //|   - Pivots (Standard/Fibonacci/Camarilla/Woodie) as continuous    |
 //|     horizontal lines.                                             |
 //|   - On-chart dashboard (left side) + optional debug journal logs. |
+//|                                                                  |
+//|  v5.00 changes:                                                  |
+//|   - Grid adds stop while the HTF trend opposes the cycle (open    |
+//|     trades untouched) and resume if the trend re-aligns.          |
+//|   - Nothing is ever closed on a trend change.                     |
+//|   - Trend flip opens a fresh cycle in the new direction while     |
+//|     the old cycle keeps running (both sides simultaneously).      |
 //|                                                                  |
 //|  v4.00 changes:                                                  |
 //|   - Trailing hardened: silent skip conditions removed, every      |
@@ -30,7 +42,7 @@
 //|     next grid add, floating P/L, spread, balance/equity.          |
 //+------------------------------------------------------------------+
 #property copyright "Session-3"
-#property version   "4.00"
+#property version   "5.00"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -122,6 +134,9 @@ bool      g_calBlackout   = false;
 datetime  g_calLastCheck  = 0;
 datetime  g_calNextTime   = 0;   // server time of nearest upcoming calendar event
 string    g_calNextName   = "";
+
+bool      g_pausedBuy  = false;  // log-once flags for grid adds paused by trend flip
+bool      g_pausedSell = false;
 
 //--- everything the EA knows about the currently open cycle
 struct CycleInfo
@@ -247,6 +262,9 @@ int OnInit()
       Print("WARNING: A distance is below the broker minimum stop level; orders/trailing may be rejected.");
    if(InpEnableGrid)
       Print("WARNING: Grid mode averages into losing trades. Risk grows with each added trade. Use a wide SL and test carefully.");
+   if((ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE) != ACCOUNT_MARGIN_MODE_RETAIL_HEDGING)
+      Print("WARNING: This account is NETTING - opposite-direction trades offset each other, so "
+            "simultaneous BUY and SELL cycles will NOT work. Use a HEDGING account.");
 
    return(INIT_SUCCEEDED);
   }
@@ -391,9 +409,10 @@ string NextNewsText()
   }
 
 //+------------------------------------------------------------------+
-//| Collect everything about the open cycle in one pass              |
+//| Collect everything about the open cycle of ONE direction         |
+//| (BUY and SELL cycles are fully independent)                      |
 //+------------------------------------------------------------------+
-bool CollectCycle(CycleInfo &ci)
+bool CollectCycleDir(const long wantType, CycleInfo &ci)
   {
    ci.count = 0;  ci.totalLots = 0;  ci.floatPL = 0;
    ci.baseTicket = 0;  ci.basePrice = 0;  ci.baseSL = 0;  ci.baseTP = 0;
@@ -405,6 +424,7 @@ bool CollectCycle(CycleInfo &ci)
       if(ticket == 0) continue;
       if(PositionGetString(POSITION_SYMBOL) != _Symbol)   continue;
       if(PositionGetInteger(POSITION_MAGIC)  != InpMagic) continue;
+      if(PositionGetInteger(POSITION_TYPE)   != wantType) continue;
 
       ci.count++;
       ci.totalLots += PositionGetDouble(POSITION_VOLUME);
@@ -451,15 +471,44 @@ void OpenTrade(int dir)
   }
 
 //+------------------------------------------------------------------+
-//| Grid: purely price-driven adds against the FIRST trade.          |
-//| Add #k opens once price is k * GridStep beyond the base entry.   |
-//| Never waits for a rejection.                                     |
+//| Grid: purely price-driven adds against the FIRST trade of each   |
+//| direction. Add #k opens once price is k * GridStep beyond the    |
+//| base entry. Never waits for a rejection.                         |
+//| Adds PAUSE while the HTF trend no longer matches the cycle's     |
+//| direction (open trades are left untouched) and resume if the     |
+//| trend re-aligns.                                                 |
 //+------------------------------------------------------------------+
 void ManageGrid()
   {
+   int trend = TrendDirection();
+   ManageGridSide(POSITION_TYPE_SELL, -1, trend);
+   ManageGridSide(POSITION_TYPE_BUY,  +1, trend);
+  }
+
+void ManageGridSide(const long posType, const int dir, const int trend)
+  {
    CycleInfo ci;
-   if(!CollectCycle(ci)) return;
+   if(!CollectCycleDir(posType, ci)) return;
    if(ci.count >= InpMaxGridTrades) return;
+
+   // Rule 1: no more adds once the HTF trend opposes this cycle
+   if(trend != dir)
+     {
+      if(dir > 0)
+        {
+         if(InpDebugLogs && !g_pausedBuy)
+            Print("GRID BUY: adds paused - HTF trend no longer up (open trades untouched)");
+         g_pausedBuy = true;
+        }
+      else
+        {
+         if(InpDebugLogs && !g_pausedSell)
+            Print("GRID SELL: adds paused - HTF trend no longer down (open trades untouched)");
+         g_pausedSell = true;
+        }
+      return;
+     }
+   if(dir > 0) g_pausedBuy = false; else g_pausedSell = false;
 
    if(InpGridRespectFilters && (!IsWithinSession() || IsNewsBlackout()))
      {
@@ -469,11 +518,10 @@ void ManageGrid()
      }
 
    double step = DistanceToPrice(InpGridStepUSD);
-   double bid  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-   double ask  = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
 
-   if(ci.baseType == POSITION_TYPE_SELL)
+   if(posType == POSITION_TYPE_SELL)
      {
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
       double adverse = bid - ci.basePrice;            // price rising = against a sell
       if(adverse >= step * ci.count)
         {
@@ -482,8 +530,9 @@ void ManageGrid()
          OpenTrade(-1);
         }
      }
-   else if(ci.baseType == POSITION_TYPE_BUY)
+   else
      {
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       double adverse = ci.basePrice - ask;            // price falling = against a buy
       if(adverse >= step * ci.count)
         {
@@ -712,8 +761,6 @@ void DashPanel()
       ObjectSetInteger(0, obj, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, obj, OBJPROP_XDISTANCE, 6);
       ObjectSetInteger(0, obj, OBJPROP_YDISTANCE, 22);
-      ObjectSetInteger(0, obj, OBJPROP_XSIZE, 274);
-      ObjectSetInteger(0, obj, OBJPROP_YSIZE, 278);
       ObjectSetInteger(0, obj, OBJPROP_BGCOLOR, C'16,20,28');
       ObjectSetInteger(0, obj, OBJPROP_BORDER_TYPE, BORDER_FLAT);
       ObjectSetInteger(0, obj, OBJPROP_COLOR, C'70,80,100');
@@ -721,6 +768,8 @@ void DashPanel()
       ObjectSetInteger(0, obj, OBJPROP_SELECTABLE, false);
       ObjectSetInteger(0, obj, OBJPROP_HIDDEN, true);
      }
+   ObjectSetInteger(0, obj, OBJPROP_XSIZE, 274);
+   ObjectSetInteger(0, obj, OBJPROP_YSIZE, 322);
   }
 
 //+------------------------------------------------------------------+
@@ -746,6 +795,58 @@ void DashLabel(int row, string text, color clr)
   }
 
 //+------------------------------------------------------------------+
+//| Four dashboard rows for one direction's cycle                    |
+//+------------------------------------------------------------------+
+int DashSide(int r, const string name, const long posType, const int dir, const int trend)
+  {
+   color cText = clrSilver, cGood = clrLimeGreen, cBad = clrTomato, cWarn = clrOrange;
+
+   CycleInfo ci;
+   if(!CollectCycleDir(posType, ci))
+     {
+      DashLabel(r++, name + ": no cycle", cText);
+      DashLabel(r++, "", cText);
+      DashLabel(r++, "", cText);
+      DashLabel(r++, "", cText);
+      return r;
+     }
+
+   DashLabel(r++, StringFormat("%s %d/%d base %.2f P/L %+.2f",
+             name, ci.count, InpMaxGridTrades, ci.basePrice, ci.floatPL),
+             (dir > 0) ? cGood : cBad);
+   DashLabel(r++, StringFormat(" SL %.2f  TP %.2f", ci.baseSL, ci.baseTP), cText);
+
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double startDist = DistanceToPrice(InpTrailStart);
+   double moved = (dir > 0) ? (bid - ci.basePrice) : (ci.basePrice - ask);
+   if(moved >= startDist)
+     {
+      double lockedPrice = (dir > 0) ? (ci.baseSL - ci.basePrice)
+                                     : (ci.basePrice - ci.baseSL);
+      DashLabel(r++, StringFormat(" Trail ACTIVE, locks %+.2f USD",
+                MoneyFromDistance(lockedPrice)), cGood);
+     }
+   else
+      DashLabel(r++, StringFormat(" Trail arms at +%.2f (now %+.2f)", startDist, moved), cWarn);
+
+   if(!InpEnableGrid)
+      DashLabel(r++, " Grid: off", cText);
+   else if(ci.count >= InpMaxGridTrades)
+      DashLabel(r++, " Grid: max trades reached", cWarn);
+   else if(trend != dir)
+      DashLabel(r++, " Grid: PAUSED (trend flipped)", cWarn);
+   else
+     {
+      double step = DistanceToPrice(InpGridStepUSD);
+      double nextAdd = (dir < 0) ? ci.basePrice + step * ci.count
+                                 : ci.basePrice - step * ci.count;
+      DashLabel(r++, StringFormat(" Grid next add @ %.2f", nextAdd), cText);
+     }
+   return r;
+  }
+
+//+------------------------------------------------------------------+
 //| Refresh the whole dashboard                                      |
 //+------------------------------------------------------------------+
 void UpdateDashboard()
@@ -755,7 +856,7 @@ void UpdateDashboard()
    if(MQLInfoInteger(MQL_TESTER) && !MQLInfoInteger(MQL_VISUAL_MODE)) return;
 
    color cText = clrSilver, cGood = clrLimeGreen, cBad = clrTomato,
-         cWarn = clrOrange, cHead = clrGold, cDim = C'90,100,120';
+         cHead = clrGold, cDim = C'90,100,120';
 
    DashPanel();
    int r = 0;
@@ -793,52 +894,8 @@ void UpdateDashboard()
 
    DashLabel(r++, "-------------------------------", cDim);
 
-   CycleInfo ci;
-   if(!CollectCycle(ci))
-     {
-      DashLabel(r++, "Positions: none", cText);
-      DashLabel(r++, "Waiting: trend-aligned pivot", cText);
-      DashLabel(r++, "rejection on " + TFName(InpSignalTF) + " close", cText);
-      DashLabel(r++, "", cText);
-      DashLabel(r++, "", cText);
-     }
-   else
-     {
-      string side = (ci.baseType == POSITION_TYPE_BUY) ? "BUY" : "SELL";
-      DashLabel(r++, StringFormat("Positions: %d/%d %s  %.2f lots",
-                ci.count, InpMaxGridTrades, side, ci.totalLots),
-                (ci.baseType == POSITION_TYPE_BUY) ? cGood : cBad);
-      DashLabel(r++, StringFormat("Base %.2f SL %.2f TP %.2f",
-                ci.basePrice, ci.baseSL, ci.baseTP), cText);
-
-      double startDist = DistanceToPrice(InpTrailStart);
-      double moved = (ci.baseType == POSITION_TYPE_BUY) ? (bid - ci.basePrice)
-                                                        : (ci.basePrice - ask);
-      if(moved >= startDist)
-        {
-         double lockedPrice = (ci.baseType == POSITION_TYPE_BUY)
-                              ? (ci.baseSL - ci.basePrice)
-                              : (ci.basePrice - ci.baseSL);
-         DashLabel(r++, StringFormat("Trail: ACTIVE  SL locks %+.2f USD",
-                   MoneyFromDistance(lockedPrice)), cGood);
-        }
-      else
-         DashLabel(r++, StringFormat("Trail: arms at +%.2f (now %+.2f)", startDist, moved), cWarn);
-
-      if(InpEnableGrid && ci.count < InpMaxGridTrades)
-        {
-         double step = DistanceToPrice(InpGridStepUSD);
-         double nextAdd = (ci.baseType == POSITION_TYPE_SELL)
-                          ? ci.basePrice + step * ci.count
-                          : ci.basePrice - step * ci.count;
-         DashLabel(r++, StringFormat("Grid: next add @ %.2f", nextAdd), cText);
-        }
-      else
-         DashLabel(r++, InpEnableGrid ? "Grid: max trades reached" : "Grid: off", cWarn);
-
-      DashLabel(r++, StringFormat("Float P/L: %+.2f USD", ci.floatPL),
-                (ci.floatPL >= 0) ? cGood : cBad);
-     }
+   r = DashSide(r, "BUY",  POSITION_TYPE_BUY,  +1, trend);
+   r = DashSide(r, "SELL", POSITION_TYPE_SELL, -1, trend);
 
    DashLabel(r++, StringFormat("Bal %.2f  Eq %.2f",
              AccountInfoDouble(ACCOUNT_BALANCE), AccountInfoDouble(ACCOUNT_EQUITY)), cText);
@@ -870,18 +927,22 @@ void OnTick()
 
    // ------- new-cycle entries only below this line -------
    if(!IsWithinSession() || IsNewsBlackout()) return;
-
-   CycleInfo ci;
-   if(CollectCycle(ci)) return;       // cycle already open: grid handles adds
-
    if(!newBar) return;                // evaluate rejections once per candle close
 
    int trend = TrendDirection();
+   if(trend == 0) return;
+
+   // One cycle per direction; the OPPOSITE side's cycle never blocks an
+   // entry, so a trend flip can start a new cycle while the old one runs.
+   CycleInfo ci;
+   long wantType = (trend > 0) ? POSITION_TYPE_BUY : POSITION_TYPE_SELL;
+   if(CollectCycleDir(wantType, ci)) return;   // this direction already has a cycle
+
    int rej;
-   if(trend != 0 && CheckRejection(rej) && rej == trend)
+   if(CheckRejection(rej) && rej == trend)
      {
       if(InpDebugLogs)
-         PrintFormat("ENTRY: trend %s + pivot rejection -> open", trend > 0 ? "UP" : "DOWN");
+         PrintFormat("ENTRY: trend %s + pivot rejection -> open new cycle", trend > 0 ? "UP" : "DOWN");
       OpenTrade(trend);
      }
   }
