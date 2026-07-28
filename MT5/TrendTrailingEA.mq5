@@ -32,6 +32,15 @@ enum ENUM_TARGET_MODE
    MODE_PRICE_POINTS = 1   // Inputs are in raw price distance (e.g. 6.0 = 6.00)
   };
 
+//--- Pivot calculation method
+enum ENUM_PIVOT_METHOD
+  {
+   PIVOT_STANDARD  = 0,   // Classic / Floor pivots
+   PIVOT_FIBONACCI = 1,   // Fibonacci pivots
+   PIVOT_CAMARILLA = 2,   // Camarilla pivots
+   PIVOT_WOODIE    = 3    // Woodie pivots
+  };
+
 //============================ INPUTS ================================//
 input group "=== Trend Filter (higher timeframe) ==="
 input ENUM_TIMEFRAMES    InpTrendTF        = PERIOD_H1;      // Higher timeframe for trend
@@ -72,6 +81,7 @@ input int                InpMaxGridTrades   = 5;             // Max total trades
 
 input group "=== Pivot Points ==="
 input bool               InpShowPivots      = true;          // Draw pivot S/R lines
+input ENUM_PIVOT_METHOD  InpPivotMethod     = PIVOT_STANDARD;// Pivot calculation method
 input ENUM_TIMEFRAMES    InpPivotTF         = PERIOD_D1;     // Pivot calculation timeframe
 
 //============================ GLOBALS ==============================//
@@ -435,6 +445,47 @@ void DrawHLine(string name, double price, color clr, int style, int width, strin
   }
 
 //+------------------------------------------------------------------+
+//| Compute pivot levels for the selected method                     |
+//+------------------------------------------------------------------+
+void ComputePivots(double H, double L, double C, double O,
+                   double &P, double &R1, double &R2, double &R3,
+                   double &S1, double &S2, double &S3)
+  {
+   double range = H - L;
+
+   switch(InpPivotMethod)
+     {
+      case PIVOT_FIBONACCI:
+         P  = (H + L + C) / 3.0;
+         R1 = P + 0.382 * range;   S1 = P - 0.382 * range;
+         R2 = P + 0.618 * range;   S2 = P - 0.618 * range;
+         R3 = P + 1.000 * range;   S3 = P - 1.000 * range;
+         break;
+
+      case PIVOT_CAMARILLA:
+         P  = (H + L + C) / 3.0;   // reference pivot (Camarilla levels are off close)
+         R1 = C + range * 1.1 / 12.0;  S1 = C - range * 1.1 / 12.0;
+         R2 = C + range * 1.1 /  6.0;  S2 = C - range * 1.1 /  6.0;
+         R3 = C + range * 1.1 /  4.0;  S3 = C - range * 1.1 /  4.0;
+         break;
+
+      case PIVOT_WOODIE:
+         P  = (H + L + 2.0 * O) / 4.0;   // uses current period open
+         R1 = 2 * P - L;   S1 = 2 * P - H;
+         R2 = P + range;   S2 = P - range;
+         R3 = H + 2 * (P - L);   S3 = L - 2 * (H - P);
+         break;
+
+      default: // PIVOT_STANDARD
+         P  = (H + L + C) / 3.0;
+         R1 = 2 * P - L;   S1 = 2 * P - H;
+         R2 = P + range;   S2 = P - range;
+         R3 = H + 2 * (P - L);   S3 = L - 2 * (H - P);
+         break;
+     }
+  }
+
+//+------------------------------------------------------------------+
 //| Recompute + redraw pivots when a new pivot period starts         |
 //+------------------------------------------------------------------+
 void UpdatePivots()
@@ -447,15 +498,11 @@ void UpdatePivots()
    double H = iHigh(_Symbol,  InpPivotTF, 1);
    double L = iLow(_Symbol,   InpPivotTF, 1);
    double C = iClose(_Symbol, InpPivotTF, 1);
+   double O = iOpen(_Symbol,  InpPivotTF, 0);   // current period open (Woodie)
    if(H <= 0 || L <= 0 || C <= 0) return;
 
-   double P  = (H + L + C) / 3.0;
-   double R1 = 2 * P - L;
-   double S1 = 2 * P - H;
-   double R2 = P + (H - L);
-   double S2 = P - (H - L);
-   double R3 = H + 2 * (P - L);
-   double S3 = L - 2 * (H - P);
+   double P, R1, R2, R3, S1, S2, S3;
+   ComputePivots(H, L, C, O, P, R1, R2, R3, S1, S2, S3);
 
    DrawHLine("PIV_P",  P,  clrGold,       STYLE_SOLID, 2, "Pivot");
    DrawHLine("PIV_R1", R1, clrTomato,     STYLE_DOT,   1, "R1");

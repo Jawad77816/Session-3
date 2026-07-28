@@ -67,11 +67,19 @@ trades per cycle.
 
 ## Pivot points (Rule 5)
 
-Standard floor pivots computed from the previous `InpPivotTF` (default D1) candle
-and drawn as `OBJ_HLINE` — **continuous horizontal lines** that span the whole
-chart and auto-recalculate each new day: `P`, `R1/R2/R3`, `S1/S2/S3`. They are
-**visual only** — they do not currently gate entries. (Say the word if you want
-entries filtered by pivots.)
+Pivots computed from the previous `InpPivotTF` (default D1) candle and drawn as
+`OBJ_HLINE` — **continuous horizontal lines** that span the whole chart and
+auto-recalculate each new day: `P`, `R1/R2/R3`, `S1/S2/S3`.
+
+The calculation method is selectable via **`InpPivotMethod`**:
+
+- **`PIVOT_STANDARD`** — Classic / Floor pivots (default).
+- **`PIVOT_FIBONACCI`** — Fibonacci pivots (R/S at 0.382, 0.618, 1.000 of range).
+- **`PIVOT_CAMARILLA`** — Camarilla pivots (levels off the close × 1.1/12, /6, /4).
+- **`PIVOT_WOODIE`** — Woodie pivots (pivot uses the current period's open).
+
+They are **visual only** — they do not currently gate entries. (Say the word if you
+want entries filtered by pivots.)
 
 ## The "6 USD" = "6.00 price" point
 
@@ -111,6 +119,7 @@ To keep it correct on any symbol/lot, the EA has `InpTargetMode`:
 | `InpGridStepUSD` | 4 | Adverse move per added trade |
 | `InpMaxGridTrades` | 5 | Max trades per cycle |
 | `InpShowPivots` | true | Draw pivot S/R lines |
+| `InpPivotMethod` | STANDARD | Standard / Fibonacci / Camarilla / Woodie |
 | `InpPivotTF` | D1 | Pivot calculation timeframe |
 
 ## Install
