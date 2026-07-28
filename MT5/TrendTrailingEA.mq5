@@ -9,21 +9,28 @@
 //|      6 USD each on 0.01 lot Gold => a 6.00 price move).           |
 //|   3. Trailing stop that activates after a small favourable move.  |
 //|                                                                  |
-//|  Added features:                                                 |
-//|   - Entry is gated by a pivot-point rejection aligned with trend  |
-//|     (bullish rejection at support in an uptrend -> buy, etc.).    |
-//|   - Session window in PKT (default 12:00-20:00).                  |
-//|   - No NEW trades outside the window / during a news blackout,    |
-//|     but running trades are left to hit their own TP/SL.           |
-//|   - News filter (manual list + optional MT5 economic calendar),   |
-//|     15 min before -> 15 min after.                                |
-//|   - Grid: every N USD the price moves AGAINST the first trade,    |
-//|     add another trade in the same direction (same lot/TP/SL/      |
-//|     trailing).  *** Averaging into losers - high risk. ***        |
-//|   - Daily pivot points drawn as continuous horizontal S/R lines.  |
+//|  Features:                                                       |
+//|   - Entry gated by a pivot-point rejection aligned with trend.    |
+//|   - Session window in PKT (default 12:00-20:00); running trades   |
+//|     are never force-closed.                                       |
+//|   - News filter (manual list + optional MT5 economic calendar).   |
+//|   - Grid: every N USD of adverse move against the FIRST trade,    |
+//|     add another same-direction trade. PRICE-DRIVEN ONLY - never   |
+//|     waits for a rejection.  *** Averaging into losers - risk. *** |
+//|   - Pivots (Standard/Fibonacci/Camarilla/Woodie) as continuous    |
+//|     horizontal lines.                                             |
+//|   - On-chart dashboard (left side) + optional debug journal logs. |
+//|                                                                  |
+//|  v4.00 changes:                                                  |
+//|   - Trailing hardened: silent skip conditions removed, every      |
+//|     failed modify is logged, optional debug log of every move.    |
+//|   - Grid adds decoupled from session/news gate by default         |
+//|     (InpGridRespectFilters to re-enable the old behaviour).       |
+//|   - Dashboard: session, news, trend, SL/TP, trailing state,       |
+//|     next grid add, floating P/L, spread, balance/equity.          |
 //+------------------------------------------------------------------+
 #property copyright "Session-3"
-#property version   "3.00"
+#property version   "4.00"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -85,11 +92,16 @@ input group "=== Grid (average into adverse moves) ==="
 input bool               InpEnableGrid      = true;          // Add trades as price moves against the first
 input double             InpGridStepUSD     = 4.0;           // Adverse move per added trade (USD or price)
 input int                InpMaxGridTrades   = 5;             // Max total trades in a cycle (incl. first)
+input bool               InpGridRespectFilters = false;      // Grid adds also blocked by session window / news
 
 input group "=== Pivot Points ==="
 input bool               InpShowPivots      = true;          // Draw pivot S/R lines
 input ENUM_PIVOT_METHOD  InpPivotMethod     = PIVOT_STANDARD;// Pivot calculation method
 input ENUM_TIMEFRAMES    InpPivotTF         = PERIOD_D1;     // Pivot calculation timeframe
+
+input group "=== Dashboard & Debug ==="
+input bool               InpShowDashboard   = true;          // Show info panel on the chart (left side)
+input bool               InpDebugLogs       = false;         // Print trailing/grid decisions to the journal
 
 //============================ GLOBALS ==============================//
 CTrade    trade;
@@ -105,9 +117,25 @@ datetime  g_lastSignalBar   = 0;
 double    g_levels[7];          // P, R1, R2, R3, S1, S2, S3 (for rejection detection)
 int       g_numLevels = 7;
 
-// calendar throttle
+// calendar cache (refreshed at most once per 60s)
 bool      g_calBlackout   = false;
 datetime  g_calLastCheck  = 0;
+datetime  g_calNextTime   = 0;   // server time of nearest upcoming calendar event
+string    g_calNextName   = "";
+
+//--- everything the EA knows about the currently open cycle
+struct CycleInfo
+  {
+   int      count;
+   long     baseType;
+   ulong    baseTicket;
+   double   basePrice;
+   double   baseSL;
+   double   baseTP;
+   double   totalLots;
+   double   floatPL;
+   datetime baseTime;
+  };
 
 //+------------------------------------------------------------------+
 //| Convert a "USD or price" input into a raw price distance         |
@@ -116,12 +144,23 @@ double DistanceToPrice(double value)
   {
    if(InpTargetMode == MODE_PRICE_POINTS)
       return value;
-
    double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
    double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
    if(tickValue <= 0.0 || tickSize <= 0.0 || InpLots <= 0.0)
       return value;
    return value * tickSize / (tickValue * InpLots);
+  }
+
+//+------------------------------------------------------------------+
+//| Convert a raw price distance into account money (for display)    |
+//+------------------------------------------------------------------+
+double MoneyFromDistance(double dist)
+  {
+   double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   if(tickSize <= 0.0)
+      return 0.0;
+   return dist / tickSize * tickValue * InpLots;
   }
 
 //+------------------------------------------------------------------+
@@ -132,6 +171,16 @@ datetime PKTNow()
    // PKT = GMT+5;  GMT = server - offset;  so PKT = server + (5 - offset)
    int shiftSec = (5 - InpBrokerGMTOffset) * 3600;
    return (datetime)((long)TimeCurrent() + shiftSec);
+  }
+
+//+------------------------------------------------------------------+
+//| Short name of a timeframe ("H1", "M15", ...)                     |
+//+------------------------------------------------------------------+
+string TFName(ENUM_TIMEFRAMES tf)
+  {
+   if(tf == PERIOD_CURRENT)
+      tf = (ENUM_TIMEFRAMES)_Period;
+   return StringSubstr(EnumToString(tf), 7);
   }
 
 //+------------------------------------------------------------------+
@@ -178,21 +227,23 @@ int OnInit()
       return(INIT_FAILED);
      }
 
+   ArrayInitialize(g_levels, 0.0);
    ParseNewsList();
+   EventSetTimer(1);   // keeps the dashboard clock alive between ticks
 
-   double tpP    = DistanceToPrice(InpTakeProfit);
-   double slP    = DistanceToPrice(InpStopLoss);
-   double startP = DistanceToPrice(InpTrailStart);
-   double distP  = DistanceToPrice(InpTrailDistance);
    PrintFormat("Resolved (price): TP=%.5f SL=%.5f TrailStart=%.5f TrailDist=%.5f GridStep=%.5f",
-               tpP, slP, startP, distP, DistanceToPrice(InpGridStepUSD));
+               DistanceToPrice(InpTakeProfit), DistanceToPrice(InpStopLoss),
+               DistanceToPrice(InpTrailStart), DistanceToPrice(InpTrailDistance),
+               DistanceToPrice(InpGridStepUSD));
    PrintFormat("Broker min stop distance: %d points (%.5f price)",
                (int)g_stopsLevelPts, g_stopsLevelPts * g_point);
    PrintFormat("Session PKT %02d:00-%02d:00 | Broker GMT offset %+d | Manual news entries: %d",
                InpStartHourPKT, InpEndHourPKT, InpBrokerGMTOffset, ArraySize(g_newsTimes));
 
    double minStopPrice = g_stopsLevelPts * g_point;
-   if(slP < minStopPrice || tpP < minStopPrice || distP < minStopPrice)
+   if(DistanceToPrice(InpStopLoss) < minStopPrice ||
+      DistanceToPrice(InpTakeProfit) < minStopPrice ||
+      DistanceToPrice(InpTrailDistance) < minStopPrice)
       Print("WARNING: A distance is below the broker minimum stop level; orders/trailing may be rejected.");
    if(InpEnableGrid)
       Print("WARNING: Grid mode averages into losing trades. Risk grows with each added trade. Use a wide SL and test carefully.");
@@ -205,9 +256,11 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
   {
+   EventKillTimer();
    if(maHandle != INVALID_HANDLE)
       IndicatorRelease(maHandle);
    ObjectsDeleteAll(0, "PIV_");
+   ObjectsDeleteAll(0, "DB_");
   }
 
 //+------------------------------------------------------------------+
@@ -236,17 +289,21 @@ bool IsWithinSession()
   }
 
 //+------------------------------------------------------------------+
-//| MT5 economic-calendar blackout (live only), throttled to 60s     |
+//| MT5 economic-calendar scan (live only), cached for 60s.          |
+//| Sets blackout state and the nearest upcoming event for the       |
+//| dashboard.                                                       |
 //+------------------------------------------------------------------+
 bool CalendarBlackout()
   {
    if(!InpUseCalendarAuto) return false;
 
    datetime now = TimeCurrent();
-   if(now - g_calLastCheck < 60)      // reuse cached result within the minute
+   if(now - g_calLastCheck < 60)
       return g_calBlackout;
    g_calLastCheck = now;
    g_calBlackout  = false;
+   g_calNextTime  = 0;
+   g_calNextName  = "";
 
    MqlCalendarValue values[];
    datetime from = now - 12 * 3600;
@@ -267,9 +324,12 @@ bool CalendarBlackout()
 
       datetime et = values[i].time;
       if(now >= et - InpNewsMinsBefore * 60 && now <= et + InpNewsMinsAfter * 60)
-        {
          g_calBlackout = true;
-         break;
+
+      if(et > now && (g_calNextTime == 0 || et < g_calNextTime))
+        {
+         g_calNextTime = et;
+         g_calNextName = evt.name;
         }
      }
    return g_calBlackout;
@@ -293,29 +353,52 @@ bool IsNewsBlackout()
   }
 
 //+------------------------------------------------------------------+
-//| Count positions belonging to this EA on this symbol              |
+//| Nearest upcoming news event as display text                      |
 //+------------------------------------------------------------------+
-int CountPositions()
+string NextNewsText()
   {
-   int c = 0;
-   for(int i = PositionsTotal() - 1; i >= 0; i--)
+   datetime nowPKT  = PKTNow();
+   datetime bestPKT = 0;
+   string   label   = "";
+
+   for(int i = 0; i < ArraySize(g_newsTimes); i++)
+      if(g_newsTimes[i] > nowPKT && (bestPKT == 0 || g_newsTimes[i] < bestPKT))
+        {
+         bestPKT = g_newsTimes[i];
+         label   = "manual";
+        }
+
+   if(g_calNextTime > 0)
      {
-      ulong ticket = PositionGetTicket(i);
-      if(ticket == 0) continue;
-      if(PositionGetString(POSITION_SYMBOL) == _Symbol &&
-         PositionGetInteger(POSITION_MAGIC) == InpMagic)
-         c++;
+      datetime calPKT = (datetime)((long)g_calNextTime + (5 - InpBrokerGMTOffset) * 3600);
+      if(calPKT > nowPKT && (bestPKT == 0 || calPKT < bestPKT))
+        {
+         bestPKT = calPKT;
+         label   = g_calNextName;
+        }
      }
-   return c;
+
+   if(bestPKT == 0)
+      return "none in next 12h";
+
+   long secs = (long)(bestPKT - nowPKT);
+   string cd = (secs >= 3600) ? StringFormat("%dh%02dm", (int)(secs / 3600), (int)((secs % 3600) / 60))
+                              : StringFormat("%dm", (int)(secs / 60));
+   string txt = StringFormat("%s PKT (in %s)", TimeToString(bestPKT, TIME_MINUTES), cd);
+   if(label != "" && label != "manual")
+      txt += " " + label;
+   return txt;
   }
 
 //+------------------------------------------------------------------+
-//| Find the FIRST (oldest) trade of the current cycle               |
+//| Collect everything about the open cycle in one pass              |
 //+------------------------------------------------------------------+
-bool FindBasePosition(double &basePrice, long &baseType)
+bool CollectCycle(CycleInfo &ci)
   {
-   datetime oldest = 0;
-   bool found = false;
+   ci.count = 0;  ci.totalLots = 0;  ci.floatPL = 0;
+   ci.baseTicket = 0;  ci.basePrice = 0;  ci.baseSL = 0;  ci.baseTP = 0;
+   ci.baseType = -1;  ci.baseTime = 0;
+
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
       ulong ticket = PositionGetTicket(i);
@@ -323,16 +406,22 @@ bool FindBasePosition(double &basePrice, long &baseType)
       if(PositionGetString(POSITION_SYMBOL) != _Symbol)   continue;
       if(PositionGetInteger(POSITION_MAGIC)  != InpMagic) continue;
 
+      ci.count++;
+      ci.totalLots += PositionGetDouble(POSITION_VOLUME);
+      ci.floatPL   += PositionGetDouble(POSITION_PROFIT) + PositionGetDouble(POSITION_SWAP);
+
       datetime ot = (datetime)PositionGetInteger(POSITION_TIME);
-      if(!found || ot < oldest)
+      if(ci.baseTicket == 0 || ot < ci.baseTime)
         {
-         oldest    = ot;
-         basePrice = PositionGetDouble(POSITION_PRICE_OPEN);
-         baseType  = PositionGetInteger(POSITION_TYPE);
-         found     = true;
+         ci.baseTime   = ot;
+         ci.baseTicket = ticket;
+         ci.basePrice  = PositionGetDouble(POSITION_PRICE_OPEN);
+         ci.baseSL     = PositionGetDouble(POSITION_SL);
+         ci.baseTP     = PositionGetDouble(POSITION_TP);
+         ci.baseType   = PositionGetInteger(POSITION_TYPE);
         }
      }
-   return found;
+   return (ci.count > 0);
   }
 
 //+------------------------------------------------------------------+
@@ -362,37 +451,52 @@ void OpenTrade(int dir)
   }
 
 //+------------------------------------------------------------------+
-//| Grid: add same-direction trades as price moves against the first |
+//| Grid: purely price-driven adds against the FIRST trade.          |
+//| Add #k opens once price is k * GridStep beyond the base entry.   |
+//| Never waits for a rejection.                                     |
 //+------------------------------------------------------------------+
 void ManageGrid()
   {
-   int n = CountPositions();
-   if(n <= 0 || n >= InpMaxGridTrades) return;
+   CycleInfo ci;
+   if(!CollectCycle(ci)) return;
+   if(ci.count >= InpMaxGridTrades) return;
 
-   double basePrice;
-   long   baseType;
-   if(!FindBasePosition(basePrice, baseType)) return;
+   if(InpGridRespectFilters && (!IsWithinSession() || IsNewsBlackout()))
+     {
+      if(InpDebugLogs)
+         Print("GRID: add suppressed by session/news filter (InpGridRespectFilters=true)");
+      return;
+     }
 
    double step = DistanceToPrice(InpGridStepUSD);
    double bid  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask  = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
 
-   if(baseType == POSITION_TYPE_SELL)
+   if(ci.baseType == POSITION_TYPE_SELL)
      {
-      double adverse = bid - basePrice;          // price rising = against a sell
-      if(adverse >= step * n)
+      double adverse = bid - ci.basePrice;            // price rising = against a sell
+      if(adverse >= step * ci.count)
+        {
+         if(InpDebugLogs)
+            PrintFormat("GRID: adding SELL #%d (adverse %.5f >= %.5f)", ci.count + 1, adverse, step * ci.count);
          OpenTrade(-1);
+        }
      }
-   else if(baseType == POSITION_TYPE_BUY)
+   else if(ci.baseType == POSITION_TYPE_BUY)
      {
-      double adverse = basePrice - ask;          // price falling = against a buy
-      if(adverse >= step * n)
+      double adverse = ci.basePrice - ask;            // price falling = against a buy
+      if(adverse >= step * ci.count)
+        {
+         if(InpDebugLogs)
+            PrintFormat("GRID: adding BUY #%d (adverse %.5f >= %.5f)", ci.count + 1, adverse, step * ci.count);
          OpenTrade(+1);
+        }
      }
   }
 
 //+------------------------------------------------------------------+
-//| Trailing stop for every position of this EA                      |
+//| Trailing stop for every position of this EA.                     |
+//| Runs every tick, never gated by session or news.                 |
 //+------------------------------------------------------------------+
 void ManageTrailing()
   {
@@ -400,7 +504,7 @@ void ManageTrailing()
    double trailDist = DistanceToPrice(InpTrailDistance);
    double stepDist  = DistanceToPrice(InpTrailStep);
    double minStop   = g_stopsLevelPts * g_point;
-   if(trailDist < minStop) trailDist = minStop;
+   if(trailDist < minStop) trailDist = minStop;      // clamp instead of skipping
 
    for(int i = PositionsTotal() - 1; i >= 0; i--)
      {
@@ -417,42 +521,36 @@ void ManageTrailing()
       if(type == POSITION_TYPE_BUY)
         {
          double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-         if(bid - entry < startDist) continue;
+         if(bid - entry < startDist) continue;               // trailing not armed yet
          double newSL = NormalizeDouble(bid - trailDist, g_digits);
-         if(bid - newSL < minStop) continue;
-         if(newSL <= curSL + stepDist) continue;
-         if(!trade.PositionModify(ticket, newSL, curTP))
-            PrintFormat("BUY trail failed: %d %s", trade.ResultRetcode(), trade.ResultRetcodeDescription());
+         if(newSL <= curSL) continue;                        // never loosen the stop
+         if(curSL > 0 && newSL - curSL < stepDist - g_point * 0.5) continue; // move in >= step increments
+         if(trade.PositionModify(ticket, newSL, curTP))
+           {
+            if(InpDebugLogs)
+               PrintFormat("TRAIL BUY #%I64u: SL %.5f -> %.5f (bid %.5f)", ticket, curSL, newSL, bid);
+           }
+         else
+            PrintFormat("TRAIL BUY #%I64u modify FAILED: %d %s",
+                        ticket, trade.ResultRetcode(), trade.ResultRetcodeDescription());
         }
       else if(type == POSITION_TYPE_SELL)
         {
          double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-         if(entry - ask < startDist) continue;
+         if(entry - ask < startDist) continue;               // trailing not armed yet
          double newSL = NormalizeDouble(ask + trailDist, g_digits);
-         if(newSL - ask < minStop) continue;
-         if(curSL != 0.0 && newSL >= curSL - stepDist) continue;
-         if(!trade.PositionModify(ticket, newSL, curTP))
-            PrintFormat("SELL trail failed: %d %s", trade.ResultRetcode(), trade.ResultRetcodeDescription());
+         if(curSL > 0 && newSL >= curSL) continue;           // never loosen the stop
+         if(curSL > 0 && curSL - newSL < stepDist - g_point * 0.5) continue; // move in >= step increments
+         if(trade.PositionModify(ticket, newSL, curTP))
+           {
+            if(InpDebugLogs)
+               PrintFormat("TRAIL SELL #%I64u: SL %.5f -> %.5f (ask %.5f)", ticket, curSL, newSL, ask);
+           }
+         else
+            PrintFormat("TRAIL SELL #%I64u modify FAILED: %d %s",
+                        ticket, trade.ResultRetcode(), trade.ResultRetcodeDescription());
         }
      }
-  }
-
-//+------------------------------------------------------------------+
-//| Draw / refresh one horizontal (continuous) line                  |
-//+------------------------------------------------------------------+
-void DrawHLine(string name, double price, color clr, int style, int width, string label)
-  {
-   if(ObjectFind(0, name) < 0)
-      ObjectCreate(0, name, OBJ_HLINE, 0, 0, price);
-   ObjectSetDouble(0,  name, OBJPROP_PRICE, price);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_STYLE, style);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
-   ObjectSetInteger(0, name, OBJPROP_BACK, true);
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-   ObjectSetString(0,  name, OBJPROP_TEXT, label);
-   ObjectSetString(0,  name, OBJPROP_TOOLTIP, label);
   }
 
 //+------------------------------------------------------------------+
@@ -494,6 +592,24 @@ void ComputePivots(double H, double L, double C, double O,
          R3 = H + 2 * (P - L);   S3 = L - 2 * (H - P);
          break;
      }
+  }
+
+//+------------------------------------------------------------------+
+//| Draw / refresh one horizontal (continuous) line                  |
+//+------------------------------------------------------------------+
+void DrawHLine(string name, double price, color clr, int style, int width, string label)
+  {
+   if(ObjectFind(0, name) < 0)
+      ObjectCreate(0, name, OBJ_HLINE, 0, 0, price);
+   ObjectSetDouble(0,  name, OBJPROP_PRICE, price);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+   ObjectSetInteger(0, name, OBJPROP_BACK, true);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetString(0,  name, OBJPROP_TEXT, label);
+   ObjectSetString(0,  name, OBJPROP_TOOLTIP, label);
   }
 
 //+------------------------------------------------------------------+
@@ -583,38 +699,190 @@ bool IsNewSignalBar()
    return true;
   }
 
+//============================ DASHBOARD ============================//
+//+------------------------------------------------------------------+
+//| Background panel                                                 |
+//+------------------------------------------------------------------+
+void DashPanel()
+  {
+   string obj = "DB_bg";
+   if(ObjectFind(0, obj) < 0)
+     {
+      ObjectCreate(0, obj, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, obj, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, obj, OBJPROP_XDISTANCE, 6);
+      ObjectSetInteger(0, obj, OBJPROP_YDISTANCE, 22);
+      ObjectSetInteger(0, obj, OBJPROP_XSIZE, 274);
+      ObjectSetInteger(0, obj, OBJPROP_YSIZE, 278);
+      ObjectSetInteger(0, obj, OBJPROP_BGCOLOR, C'16,20,28');
+      ObjectSetInteger(0, obj, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+      ObjectSetInteger(0, obj, OBJPROP_COLOR, C'70,80,100');
+      ObjectSetInteger(0, obj, OBJPROP_BACK, false);
+      ObjectSetInteger(0, obj, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, obj, OBJPROP_HIDDEN, true);
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| One text row of the dashboard                                    |
+//+------------------------------------------------------------------+
+void DashLabel(int row, string text, color clr)
+  {
+   string obj = StringFormat("DB_r%02d", row);
+   if(ObjectFind(0, obj) < 0)
+     {
+      ObjectCreate(0, obj, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, obj, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, obj, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+      ObjectSetInteger(0, obj, OBJPROP_XDISTANCE, 14);
+      ObjectSetInteger(0, obj, OBJPROP_YDISTANCE, 30 + row * 16);
+      ObjectSetInteger(0, obj, OBJPROP_FONTSIZE, 9);
+      ObjectSetString(0,  obj, OBJPROP_FONT, "Consolas");
+      ObjectSetInteger(0, obj, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, obj, OBJPROP_HIDDEN, true);
+     }
+   ObjectSetInteger(0, obj, OBJPROP_COLOR, clr);
+   ObjectSetString(0,  obj, OBJPROP_TEXT, (text == "") ? " " : text);
+  }
+
+//+------------------------------------------------------------------+
+//| Refresh the whole dashboard                                      |
+//+------------------------------------------------------------------+
+void UpdateDashboard()
+  {
+   if(!InpShowDashboard) return;
+   // objects are invisible in a non-visual tester run - skip the work
+   if(MQLInfoInteger(MQL_TESTER) && !MQLInfoInteger(MQL_VISUAL_MODE)) return;
+
+   color cText = clrSilver, cGood = clrLimeGreen, cBad = clrTomato,
+         cWarn = clrOrange, cHead = clrGold, cDim = C'90,100,120';
+
+   DashPanel();
+   int r = 0;
+
+   DashLabel(r++, "TrendTrailingEA v4.0  " + _Symbol, cHead);
+
+   MqlDateTime pt;
+   TimeToStruct(PKTNow(), pt);
+   DashLabel(r++, StringFormat("PKT %02d:%02d:%02d  (srv %s)",
+             pt.hour, pt.min, pt.sec, TimeToString(TimeCurrent(), TIME_MINUTES)), cText);
+
+   bool inSes = IsWithinSession();
+   DashLabel(r++, StringFormat("Session: %s (%02d-%02d PKT)",
+             inSes ? "OPEN" : "CLOSED", InpStartHourPKT, InpEndHourPKT),
+             inSes ? cGood : cBad);
+
+   bool blackout = IsNewsBlackout();
+   DashLabel(r++, blackout ? "News: BLACKOUT - entries paused" : "News: clear",
+             blackout ? cBad : cGood);
+   DashLabel(r++, "Next: " + NextNewsText(), cText);
+
+   int trend = TrendDirection();
+   string ts = (trend > 0) ? "UP" : (trend < 0) ? "DOWN" : "FLAT";
+   DashLabel(r++, StringFormat("Trend [%s MA%d]: %s", TFName(InpTrendTF), InpMAPeriod, ts),
+             (trend > 0) ? cGood : (trend < 0) ? cBad : cText);
+
+   string pm = (InpPivotMethod == PIVOT_FIBONACCI) ? "Fibonacci" :
+               (InpPivotMethod == PIVOT_CAMARILLA) ? "Camarilla" :
+               (InpPivotMethod == PIVOT_WOODIE)    ? "Woodie"    : "Standard";
+   DashLabel(r++, StringFormat("Pivots: %s %s  P %.2f", pm, TFName(InpPivotTF), g_levels[0]), cText);
+
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   DashLabel(r++, StringFormat("Spread: %d pts", (int)MathRound((ask - bid) / g_point)), cText);
+
+   DashLabel(r++, "-------------------------------", cDim);
+
+   CycleInfo ci;
+   if(!CollectCycle(ci))
+     {
+      DashLabel(r++, "Positions: none", cText);
+      DashLabel(r++, "Waiting: trend-aligned pivot", cText);
+      DashLabel(r++, "rejection on " + TFName(InpSignalTF) + " close", cText);
+      DashLabel(r++, "", cText);
+      DashLabel(r++, "", cText);
+     }
+   else
+     {
+      string side = (ci.baseType == POSITION_TYPE_BUY) ? "BUY" : "SELL";
+      DashLabel(r++, StringFormat("Positions: %d/%d %s  %.2f lots",
+                ci.count, InpMaxGridTrades, side, ci.totalLots),
+                (ci.baseType == POSITION_TYPE_BUY) ? cGood : cBad);
+      DashLabel(r++, StringFormat("Base %.2f SL %.2f TP %.2f",
+                ci.basePrice, ci.baseSL, ci.baseTP), cText);
+
+      double startDist = DistanceToPrice(InpTrailStart);
+      double moved = (ci.baseType == POSITION_TYPE_BUY) ? (bid - ci.basePrice)
+                                                        : (ci.basePrice - ask);
+      if(moved >= startDist)
+        {
+         double lockedPrice = (ci.baseType == POSITION_TYPE_BUY)
+                              ? (ci.baseSL - ci.basePrice)
+                              : (ci.basePrice - ci.baseSL);
+         DashLabel(r++, StringFormat("Trail: ACTIVE  SL locks %+.2f USD",
+                   MoneyFromDistance(lockedPrice)), cGood);
+        }
+      else
+         DashLabel(r++, StringFormat("Trail: arms at +%.2f (now %+.2f)", startDist, moved), cWarn);
+
+      if(InpEnableGrid && ci.count < InpMaxGridTrades)
+        {
+         double step = DistanceToPrice(InpGridStepUSD);
+         double nextAdd = (ci.baseType == POSITION_TYPE_SELL)
+                          ? ci.basePrice + step * ci.count
+                          : ci.basePrice - step * ci.count;
+         DashLabel(r++, StringFormat("Grid: next add @ %.2f", nextAdd), cText);
+        }
+      else
+         DashLabel(r++, InpEnableGrid ? "Grid: max trades reached" : "Grid: off", cWarn);
+
+      DashLabel(r++, StringFormat("Float P/L: %+.2f USD", ci.floatPL),
+                (ci.floatPL >= 0) ? cGood : cBad);
+     }
+
+   DashLabel(r++, StringFormat("Bal %.2f  Eq %.2f",
+             AccountInfoDouble(ACCOUNT_BALANCE), AccountInfoDouble(ACCOUNT_EQUITY)), cText);
+
+   ChartRedraw();
+  }
+
+//+------------------------------------------------------------------+
+//| Timer: keeps the dashboard clock alive between ticks             |
+//+------------------------------------------------------------------+
+void OnTimer()
+  {
+   UpdateDashboard();
+  }
+
 //+------------------------------------------------------------------+
 //| Expert tick                                                      |
 //+------------------------------------------------------------------+
 void OnTick()
   {
-   UpdatePivots();        // pivots (also stores levels for rejection entries)
-   ManageTrailing();      // always manage exits, even outside the session
+   UpdatePivots();                    // pivots + levels for rejection entries
+   ManageTrailing();                  // exits managed every tick, never gated
+   if(InpEnableGrid)
+      ManageGrid();                   // price-driven adds, every tick
 
-   // Track candle closes every tick so rejections are only ever acted on once,
-   // and rejections that occur while a position is open are consumed (ignored).
-   bool newBar = IsNewSignalBar();
+   bool newBar = IsNewSignalBar();    // consume the bar even when we can't trade
 
-   bool canOpen = IsWithinSession() && !IsNewsBlackout();
-   if(!canOpen) return;   // no NEW trades outside window / during news
+   UpdateDashboard();
 
-   int positions = CountPositions();
-   if(positions == 0)
+   // ------- new-cycle entries only below this line -------
+   if(!IsWithinSession() || IsNewsBlackout()) return;
+
+   CycleInfo ci;
+   if(CollectCycle(ci)) return;       // cycle already open: grid handles adds
+
+   if(!newBar) return;                // evaluate rejections once per candle close
+
+   int trend = TrendDirection();
+   int rej;
+   if(trend != 0 && CheckRejection(rej) && rej == trend)
      {
-      // First trade of a cycle: only on a pivot rejection that agrees with trend.
-      if(newBar)
-        {
-         int trend = TrendDirection();
-         int rej;
-         if(trend != 0 && CheckRejection(rej) && rej == trend)
-            OpenTrade(trend);
-        }
-     }
-   else if(InpEnableGrid)
-     {
-      // Position already open: TrendTrailing's 4-USD grid adds more (rejections
-      // are ignored until flat, per configuration).
-      ManageGrid();
+      if(InpDebugLogs)
+         PrintFormat("ENTRY: trend %s + pivot rejection -> open", trend > 0 ? "UP" : "DOWN");
+      OpenTrade(trend);
      }
   }
 //+------------------------------------------------------------------+

@@ -133,6 +133,36 @@ To keep it correct on any symbol/lot, the EA has `InpTargetMode`:
 | `InpShowPivots` | true | Draw pivot S/R lines |
 | `InpPivotMethod` | STANDARD | Standard / Fibonacci / Camarilla / Woodie |
 | `InpPivotTF` | D1 | Pivot calculation timeframe |
+| `InpGridRespectFilters` | false | If true, grid adds are also blocked by session/news |
+| `InpShowDashboard` | true | On-chart info panel (left side) |
+| `InpDebugLogs` | false | Journal log of every trailing/grid decision |
+
+## v4.0 — trailing/grid fixes and dashboard
+
+- **Trailing hardened.** Silent skip conditions removed (broker stop-level is now
+  clamped, not skipped); every rejected `PositionModify` is logged; with
+  `InpDebugLogs=true` every SL move is printed to the journal.
+- **Grid adds are purely price-driven.** Add #k opens the moment price is
+  `k × GridStep` beyond the FIRST trade's entry — never waits for a rejection.
+  By default adds are **no longer blocked** by the session window or news
+  blackout (set `InpGridRespectFilters=true` to restore that gating). New-cycle
+  entries are still session/news gated as before.
+- **Dashboard** (left side of the chart): PKT clock, session OPEN/CLOSED, news
+  status + next upcoming event, trend direction on the chosen TF, pivot method,
+  spread, open positions with base entry/SL/TP, trailing state (armed at / ACTIVE
+  with locked USD), next grid add price, floating P/L, balance/equity. Hidden
+  automatically in non-visual tester runs.
+
+### Testing notes (important)
+
+- Backtest with **"Every tick based on real ticks"** (or at least "Every tick").
+  In *Open prices only* mode the EA only runs once per bar, so trailing and grid
+  adds will barely fire — this alone can look like "trailing is broken".
+- If grid adds seem missing, check the dashboard's **Session** row: if it shows
+  CLOSED during your local afternoon, `InpBrokerGMTOffset` is wrong for your
+  broker, and (with `InpGridRespectFilters=true`) that gate silently blocks adds.
+- Turn on `InpDebugLogs` and watch the journal: you'll see `TRAIL ...` and
+  `GRID: adding ...` lines for every decision.
 
 ## Install
 
