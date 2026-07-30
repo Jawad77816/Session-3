@@ -137,6 +137,31 @@ To keep it correct on any symbol/lot, the EA has `InpTargetMode`:
 | `InpShowDashboard` | true | On-chart info panel (left side) |
 | `InpDebugLogs` | false | Journal log of every trailing/grid decision |
 
+## v6.0 — grid re-adds, breakeven lock, sharper trailing
+
+- **Grid uses fixed price levels now.** Levels sit at `base ± k × GridStep`, and each
+  level holds **at most one** trade. If a level's trade closes and price returns to
+  that level, the grid **re-opens** it — fixing the case where a closed add never
+  came back. (The old code keyed the trigger off the live open-count, which could
+  miss the re-add.)
+- **Breakeven lock** (`InpLockBreakeven`, default true): once the trailing stop is
+  armed, the SL is never allowed to sit where it would close at a loss (floored at
+  entry + spread for buys, ceiled at entry − spread for sells). A trade that ticks
+  into profit and reverses now closes at ~breakeven instead of a small red.
+- **Sharper/quicker trailing:** default `InpTrailStep` lowered `0.05 → 0.01` so the
+  SL updates far more granularly. **`InpTrailDistance` is the "sharpness" knob**
+  (smaller = SL hugs price tighter — but keep it ≥ your spread or noise will stop
+  you out); **`InpTrailStep` is the "quickness" knob** (smaller = more frequent
+  updates).
+
+### Note on "a buy shows a loss even though price looks above"
+
+That's the **spread**, not a bug: a buy is opened at the **ask** but its P/L is
+measured at the **bid**, so a fresh buy shows roughly minus-one-spread until price
+rises by the spread. On 0.01-lot gold that's the ~0.20 red you saw. It's how every
+broker prices a position — no code can remove it. The breakeven lock above only
+governs *closed* trailed exits, ensuring those don't end red.
+
 ## v5.0 — independent BUY/SELL cycles and trend-flip rules
 
 - **Grid adds stop on trend flip.** If the HTF trend no longer matches a cycle's

@@ -26,6 +26,13 @@
 //|     horizontal lines.                                             |
 //|   - On-chart dashboard (left side) + optional debug journal logs. |
 //|                                                                  |
+//|  v6.00 changes:                                                  |
+//|   - Grid rewritten to FIXED price levels with a per-level        |
+//|     "already filled?" check, so a level whose trade closed        |
+//|     re-opens when price returns to it (fixes missing re-adds).    |
+//|   - Trailing: optional breakeven lock so an armed trail never     |
+//|     closes in loss; finer default step for sharper trailing.      |
+//|                                                                  |
 //|  v5.00 changes:                                                  |
 //|   - Grid adds stop while the HTF trend opposes the cycle (open    |
 //|     trades untouched) and resume if the trend re-aligns.          |
@@ -42,7 +49,7 @@
 //|     next grid add, floating P/L, spread, balance/equity.          |
 //+------------------------------------------------------------------+
 #property copyright "Session-3"
-#property version   "5.00"
+#property version   "6.00"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -83,8 +90,9 @@ input ENUM_TARGET_MODE   InpTargetMode     = MODE_MONEY_USD; // How TP/SL/traili
 input double             InpTakeProfit     = 6.0;            // Take profit (USD or price)
 input double             InpStopLoss       = 6.0;            // Stop loss  (USD or price)
 input double             InpTrailStart     = 0.3;            // Favourable move before trailing starts
-input double             InpTrailDistance  = 0.3;            // Gap kept between price and trailing SL
-input double             InpTrailStep      = 0.05;           // Min SL improvement before it is moved
+input double             InpTrailDistance  = 0.3;            // Gap kept between price and trailing SL (SHARPNESS: smaller = tighter)
+input double             InpTrailStep      = 0.01;           // Min SL improvement before it is moved (QUICKNESS: smaller = more updates)
+input bool               InpLockBreakeven  = true;           // Once trailing arms, never let the SL close in loss
 
 input group "=== Session (Pakistan time, PKT = UTC+5) ==="
 input int                InpBrokerGMTOffset = 3;             // Broker server GMT offset in hours (e.g. +2 or +3)
@@ -471,12 +479,30 @@ void OpenTrade(int dir)
   }
 
 //+------------------------------------------------------------------+
-//| Grid: purely price-driven adds against the FIRST trade of each   |
-//| direction. Add #k opens once price is k * GridStep beyond the    |
-//| base entry. Never waits for a rejection.                         |
-//| Adds PAUSE while the HTF trend no longer matches the cycle's     |
-//| direction (open trades are left untouched) and resume if the     |
-//| trend re-aligns.                                                 |
+//| Is there already an OPEN trade of this direction sitting on the   |
+//| given grid level? (within half a grid-step)                      |
+//+------------------------------------------------------------------+
+bool GridLevelFilled(const long posType, double levelPrice, double tol)
+  {
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)   continue;
+      if(PositionGetInteger(POSITION_MAGIC)  != InpMagic) continue;
+      if(PositionGetInteger(POSITION_TYPE)   != posType)  continue;
+      if(MathAbs(PositionGetDouble(POSITION_PRICE_OPEN) - levelPrice) <= tol)
+         return true;
+     }
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Grid: FIXED price levels at base -/+ k*GridStep. Each level holds |
+//| at most one trade; if a level's trade closed, it re-opens once    |
+//| price returns to that level. Never waits for a rejection.         |
+//| Adds PAUSE while the HTF trend opposes the cycle (open trades     |
+//| untouched) and resume if the trend re-aligns.                     |
 //+------------------------------------------------------------------+
 void ManageGrid()
   {
@@ -491,7 +517,7 @@ void ManageGridSide(const long posType, const int dir, const int trend)
    if(!CollectCycleDir(posType, ci)) return;
    if(ci.count >= InpMaxGridTrades) return;
 
-   // Rule 1: no more adds once the HTF trend opposes this cycle
+   // Rule: no more adds once the HTF trend opposes this cycle
    if(trend != dir)
      {
       if(dir > 0)
@@ -518,28 +544,25 @@ void ManageGridSide(const long posType, const int dir, const int trend)
      }
 
    double step = DistanceToPrice(InpGridStepUSD);
+   if(step <= 0.0) return;
+   double tol  = step * 0.5;
+   double bid  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   // adverse move measured against the visible (bid) price, from the base entry
+   double adverse = (posType == POSITION_TYPE_BUY) ? (ci.basePrice - bid)
+                                                   : (bid - ci.basePrice);
+   int maxLevels = InpMaxGridTrades - 1;
 
-   if(posType == POSITION_TYPE_SELL)
+   for(int k = 1; k <= maxLevels; k++)
      {
-      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      double adverse = bid - ci.basePrice;            // price rising = against a sell
-      if(adverse >= step * ci.count)
-        {
-         if(InpDebugLogs)
-            PrintFormat("GRID: adding SELL #%d (adverse %.5f >= %.5f)", ci.count + 1, adverse, step * ci.count);
-         OpenTrade(-1);
-        }
-     }
-   else
-     {
-      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      double adverse = ci.basePrice - ask;            // price falling = against a buy
-      if(adverse >= step * ci.count)
-        {
-         if(InpDebugLogs)
-            PrintFormat("GRID: adding BUY #%d (adverse %.5f >= %.5f)", ci.count + 1, adverse, step * ci.count);
-         OpenTrade(+1);
-        }
+      if(adverse < step * k) break;                 // level k (and deeper) not reached yet
+      double levelPrice = (posType == POSITION_TYPE_BUY) ? ci.basePrice - step * k
+                                                         : ci.basePrice + step * k;
+      if(GridLevelFilled(posType, levelPrice, tol)) continue;   // this level already has a trade
+      if(InpDebugLogs)
+         PrintFormat("GRID: %s add at level %d (%.2f), adverse %.2f",
+                     (dir > 0 ? "BUY" : "SELL"), k, levelPrice, adverse);
+      OpenTrade(dir);
+      return;                                        // one add per tick
      }
   }
 
@@ -567,13 +590,23 @@ void ManageTrailing()
       double curSL = PositionGetDouble(POSITION_SL);
       double curTP = PositionGetDouble(POSITION_TP);
 
+      double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double beBuf = (ask - bid) + g_point;   // spread + 1 point => exit is never a loss
+
       if(type == POSITION_TYPE_BUY)
         {
-         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
          if(bid - entry < startDist) continue;               // trailing not armed yet
-         double newSL = NormalizeDouble(bid - trailDist, g_digits);
+         double newSL = bid - trailDist;
+         if(InpLockBreakeven)
+           {
+            double beFloor = entry + beBuf;                  // never below true breakeven
+            if(newSL < beFloor) newSL = beFloor;
+           }
+         newSL = NormalizeDouble(newSL, g_digits);
          if(newSL <= curSL) continue;                        // never loosen the stop
          if(curSL > 0 && newSL - curSL < stepDist - g_point * 0.5) continue; // move in >= step increments
+         if(newSL >= bid) continue;                          // SL must stay below price for a buy
          if(trade.PositionModify(ticket, newSL, curTP))
            {
             if(InpDebugLogs)
@@ -585,11 +618,17 @@ void ManageTrailing()
         }
       else if(type == POSITION_TYPE_SELL)
         {
-         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
          if(entry - ask < startDist) continue;               // trailing not armed yet
-         double newSL = NormalizeDouble(ask + trailDist, g_digits);
+         double newSL = ask + trailDist;
+         if(InpLockBreakeven)
+           {
+            double beCeil = entry - beBuf;                   // never above true breakeven
+            if(newSL > beCeil) newSL = beCeil;
+           }
+         newSL = NormalizeDouble(newSL, g_digits);
          if(curSL > 0 && newSL >= curSL) continue;           // never loosen the stop
          if(curSL > 0 && curSL - newSL < stepDist - g_point * 0.5) continue; // move in >= step increments
+         if(newSL <= ask) continue;                          // SL must stay above price for a sell
          if(trade.PositionModify(ticket, newSL, curTP))
            {
             if(InpDebugLogs)
@@ -839,9 +878,16 @@ int DashSide(int r, const string name, const long posType, const int dir, const 
    else
      {
       double step = DistanceToPrice(InpGridStepUSD);
-      double nextAdd = (dir < 0) ? ci.basePrice + step * ci.count
-                                 : ci.basePrice - step * ci.count;
-      DashLabel(r++, StringFormat(" Grid next add @ %.2f", nextAdd), cText);
+      double nextLvl = 0.0;
+      for(int k = 1; k <= InpMaxGridTrades - 1; k++)
+        {
+         double lp = (dir > 0) ? ci.basePrice - step * k : ci.basePrice + step * k;
+         if(!GridLevelFilled(posType, lp, step * 0.5)) { nextLvl = lp; break; }
+        }
+      if(nextLvl > 0.0)
+         DashLabel(r++, StringFormat(" Grid next level @ %.2f", nextLvl), cText);
+      else
+         DashLabel(r++, " Grid: all levels filled", cWarn);
      }
    return r;
   }
@@ -861,7 +907,7 @@ void UpdateDashboard()
    DashPanel();
    int r = 0;
 
-   DashLabel(r++, "TrendTrailingEA v4.0  " + _Symbol, cHead);
+   DashLabel(r++, "TrendTrailingEA v6.0  " + _Symbol, cHead);
 
    MqlDateTime pt;
    TimeToStruct(PKTNow(), pt);
