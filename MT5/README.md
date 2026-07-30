@@ -137,6 +137,16 @@ To keep it correct on any symbol/lot, the EA has `InpTargetMode`:
 | `InpShowDashboard` | true | On-chart info panel (left side) |
 | `InpDebugLogs` | false | Journal log of every trailing/grid decision |
 
+## v6.1 — grid double-open fixed
+
+- **No more duplicate grid trades on fast moves.** v6 decided "is this level
+  filled?" by comparing against the level's theoretical price. When price gapped
+  past a level, the trade filled well below it, the level never registered as
+  taken, and a second trade opened at ~the same price on the next tick. Now grid
+  adds are gated by **levels-reached vs. open-add count**, plus an **anti-double
+  guard** that blocks any new add within half a grid-step of the fill price. One
+  trade per 4-USD level, even when price gaps — and re-adds still work.
+
 ## v6.0 — grid re-adds, breakeven lock, sharper trailing
 
 - **Grid uses fixed price levels now.** Levels sit at `base ± k × GridStep`, and each

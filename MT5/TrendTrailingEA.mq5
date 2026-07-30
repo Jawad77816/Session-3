@@ -26,9 +26,14 @@
 //|     horizontal lines.                                             |
 //|   - On-chart dashboard (left side) + optional debug journal logs. |
 //|                                                                  |
+//|  v6.10 changes:                                                  |
+//|   - Grid double-open fixed: adds are gated by (levels-reached vs  |
+//|     open-adds count) plus an anti-double guard that blocks a new   |
+//|     trade within half a step of the fill price, so a fast move     |
+//|     past a level can no longer open two trades at ~the same price. |
+//|                                                                  |
 //|  v6.00 changes:                                                  |
-//|   - Grid rewritten to FIXED price levels with a per-level        |
-//|     "already filled?" check, so a level whose trade closed        |
+//|   - Grid rewritten to price levels so a level whose trade closed  |
 //|     re-opens when price returns to it (fixes missing re-adds).    |
 //|   - Trailing: optional breakeven lock so an armed trail never     |
 //|     closes in loss; finer default step for sharper trailing.      |
@@ -49,7 +54,7 @@
 //|     next grid add, floating P/L, spread, balance/equity.          |
 //+------------------------------------------------------------------+
 #property copyright "Session-3"
-#property version   "6.00"
+#property version   "6.10"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -545,25 +550,27 @@ void ManageGridSide(const long posType, const int dir, const int trend)
 
    double step = DistanceToPrice(InpGridStepUSD);
    if(step <= 0.0) return;
-   double tol  = step * 0.5;
    double bid  = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    // adverse move measured against the visible (bid) price, from the base entry
    double adverse = (posType == POSITION_TYPE_BUY) ? (ci.basePrice - bid)
                                                    : (bid - ci.basePrice);
-   int maxLevels = InpMaxGridTrades - 1;
+   if(adverse < step) return;                        // first grid level not reached yet
 
-   for(int k = 1; k <= maxLevels; k++)
-     {
-      if(adverse < step * k) break;                 // level k (and deeper) not reached yet
-      double levelPrice = (posType == POSITION_TYPE_BUY) ? ci.basePrice - step * k
-                                                         : ci.basePrice + step * k;
-      if(GridLevelFilled(posType, levelPrice, tol)) continue;   // this level already has a trade
-      if(InpDebugLogs)
-         PrintFormat("GRID: %s add at level %d (%.2f), adverse %.2f",
-                     (dir > 0 ? "BUY" : "SELL"), k, levelPrice, adverse);
-      OpenTrade(dir);
-      return;                                        // one add per tick
-     }
+   // How many grid adds the distance travelled justifies, vs how many exist.
+   int levelsReached = (int)MathFloor(adverse / step + 1e-9);
+   int gridOpen      = ci.count - 1;                 // open adds, excluding the base trade
+   if(gridOpen >= levelsReached) return;             // already have enough adds for this distance
+
+   // Anti-double guard: never stack a second trade within half a step of the
+   // price we would fill at (prevents duplicates when price gaps past a level).
+   double refPrice = (posType == POSITION_TYPE_BUY) ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+                                                    : SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   if(GridLevelFilled(posType, refPrice, step * 0.5)) return;
+
+   if(InpDebugLogs)
+      PrintFormat("GRID: %s add #%d (adverse %.2f, levelsReached %d)",
+                  (dir > 0 ? "BUY" : "SELL"), gridOpen + 1, adverse, levelsReached);
+   OpenTrade(dir);                                   // one add per tick
   }
 
 //+------------------------------------------------------------------+
@@ -877,15 +884,14 @@ int DashSide(int r, const string name, const long posType, const int dir, const 
       DashLabel(r++, " Grid: PAUSED (trend flipped)", cWarn);
    else
      {
-      double step = DistanceToPrice(InpGridStepUSD);
-      double nextLvl = 0.0;
-      for(int k = 1; k <= InpMaxGridTrades - 1; k++)
+      double step   = DistanceToPrice(InpGridStepUSD);
+      int    nextIdx = ci.count;                     // (count-1 adds) + 1 = next level index
+      if(nextIdx <= InpMaxGridTrades - 1)
         {
-         double lp = (dir > 0) ? ci.basePrice - step * k : ci.basePrice + step * k;
-         if(!GridLevelFilled(posType, lp, step * 0.5)) { nextLvl = lp; break; }
+         double lp = (dir > 0) ? ci.basePrice - step * nextIdx
+                               : ci.basePrice + step * nextIdx;
+         DashLabel(r++, StringFormat(" Grid next add @ %.2f (lvl %d)", lp, nextIdx), cText);
         }
-      if(nextLvl > 0.0)
-         DashLabel(r++, StringFormat(" Grid next level @ %.2f", nextLvl), cText);
       else
          DashLabel(r++, " Grid: all levels filled", cWarn);
      }
@@ -907,7 +913,7 @@ void UpdateDashboard()
    DashPanel();
    int r = 0;
 
-   DashLabel(r++, "TrendTrailingEA v6.0  " + _Symbol, cHead);
+   DashLabel(r++, "TrendTrailingEA v6.1  " + _Symbol, cHead);
 
    MqlDateTime pt;
    TimeToStruct(PKTNow(), pt);
