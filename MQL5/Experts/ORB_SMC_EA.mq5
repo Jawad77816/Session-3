@@ -87,6 +87,14 @@ input int    InpSlippagePts   = 20;      // Deviation/slippage (points)
 input bool   InpShowLines     = true;    // Draw ORB high/low lines on the chart
 input bool   InpVerbose       = true;    // Verbose logging in the Experts tab
 
+//--- On-chart status panel -----------------------------------------
+input group "=== Status panel ==="
+input bool             InpShowPanel   = true;             // Show the on-chart status panel
+input ENUM_BASE_CORNER InpPanelCorner = CORNER_LEFT_UPPER;// Panel anchor corner
+input int              InpPanelX       = 12;              // Panel X offset (px from corner)
+input int              InpPanelY       = 20;              // Panel Y offset (px from corner)
+input int              InpPanelFont    = 9;               // Panel font size
+
 //==================================================================//
 //                          GLOBALS                                 //
 //==================================================================//
@@ -106,6 +114,13 @@ bool     g_shortLocked   = false; // a short setup already placed today
 int      g_tradesToday   = 0;
 
 datetime g_lastSignalBar = 0;     // last processed signal-TF bar time
+
+int      g_startHour     = 0;     // computed ORB start hour (server time)
+int      g_startMin      = 0;     // computed ORB start minute (server time)
+bool     g_isDST         = false; // US daylight saving active for today
+
+#define  PANEL_PREFIX  "ORBP_"    // object-name prefix for the status panel
+int      g_panelLines    = 0;     // number of panel label lines currently drawn
 
 //==================================================================//
 //                          INIT / DEINIT                           //
@@ -146,6 +161,7 @@ void OnDeinit(const int reason)
 {
    ObjectDelete(0, "ORB_HIGH");
    ObjectDelete(0, "ORB_LOW");
+   ObjectsDeleteAll(0, PANEL_PREFIX);
 }
 
 //==================================================================//
@@ -158,6 +174,10 @@ void OnTick()
 
    // 2) Try to compute the ORB once the first candle has closed.
    ComputeORBIfReady();
+
+   // 2b) Keep the on-chart status panel current (runs every tick, cheap).
+   if(InpShowPanel)
+      UpdatePanel();
 
    // 3) Cancel stale pendings after the trade window ends.
    if(TimeCurrent() > g_windowEnd)
@@ -221,6 +241,10 @@ void ResetDay()
       startH = serverMin / 60;
       startM = serverMin % 60;
    }
+
+   g_startHour = startH;
+   g_startMin  = startM;
+   g_isDST     = IsUSDaylightSaving(g_dayStart);
 
    MqlDateTime s = dt;
    s.hour = startH; s.min = startM; s.sec = 0;
@@ -323,6 +347,93 @@ void DrawHLine(string name, double price, color clr, datetime t1, datetime t2)
    ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
    ObjectSetInteger(0, name, OBJPROP_BACK, true);
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+}
+
+//==================================================================//
+//                        STATUS PANEL                              //
+//==================================================================//
+// Create or update one text label line of the status panel.
+void PanelLabel(int idx, string text, color clr)
+{
+   string name = PANEL_PREFIX + (string)idx;
+   if(ObjectFind(0, name) < 0)
+   {
+      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, name, OBJPROP_CORNER, InpPanelCorner);
+      ObjectSetInteger(0, name, OBJPROP_XDISTANCE, InpPanelX);
+      ObjectSetInteger(0, name, OBJPROP_YDISTANCE, InpPanelY + idx * (InpPanelFont + 7));
+      ObjectSetString (0, name, OBJPROP_FONT, "Consolas");
+      ObjectSetInteger(0, name, OBJPROP_FONTSIZE, InpPanelFont);
+      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   }
+   ObjectSetString (0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+}
+
+void UpdatePanel()
+{
+   color cTitle = clrGold;
+   color cText  = clrGainsboro;
+   color cOn    = clrLime;
+   color cWarn  = clrOrange;
+
+   int   line   = 0;
+   string sess  = StringFormat("%02d:%02d", g_startHour, g_startMin);
+   string now   = TimeToString(TimeCurrent(), TIME_MINUTES);
+
+   PanelLabel(line++, "ORB + SMC   " + _Symbol, cTitle);
+
+   PanelLabel(line++, StringFormat("Server %s  |  US DST: %s",
+              now, (g_isDST ? "ON (EDT)" : "OFF (EST)")), cText);
+
+   PanelLabel(line++, StringFormat("NY 09:30 open -> server %s  (%s)",
+              sess, TimeModeName()), cText);
+
+   // ORB state line.
+   if(g_orbReady)
+   {
+      PanelLabel(line++, StringFormat("ORB High: %s", DoubleToString(g_orbHigh, _Digits)), clrDodgerBlue);
+      PanelLabel(line++, StringFormat("ORB Low : %s   (%.0f pts)",
+                 DoubleToString(g_orbLow, _Digits), (g_orbHigh - g_orbLow) / _Point), clrTomato);
+   }
+   else if(TimeCurrent() < g_orbCloseTime)
+   {
+      PanelLabel(line++, "ORB: building range... closes " +
+                 TimeToString(g_orbCloseTime, TIME_MINUTES), cWarn);
+      PanelLabel(line++, " ", cText);
+   }
+   else
+   {
+      PanelLabel(line++, "ORB: waiting for candle data", cWarn);
+      PanelLabel(line++, " ", cText);
+   }
+
+   PanelLabel(line++, "Trade window ends: " + TimeToString(g_windowEnd, TIME_MINUTES), cText);
+
+   PanelLabel(line++, StringFormat("Trades today: %d/%d   Long:%s  Short:%s",
+              g_tradesToday, InpMaxTradesPerDay,
+              (g_longLocked ? "set" : "-"),
+              (g_shortLocked ? "set" : "-")),
+              (g_tradesToday >= InpMaxTradesPerDay ? cWarn : cOn));
+
+   // Remove any stale lines from a previous, longer render.
+   for(int i = line; i < g_panelLines; i++)
+      ObjectDelete(0, PANEL_PREFIX + (string)i);
+   g_panelLines = line;
+
+   ChartRedraw(0);
+}
+
+string TimeModeName()
+{
+   switch(InpTimeMode)
+   {
+      case TIME_NY_AUTO_DST:   return "auto-DST";
+      case TIME_SERVER_DIRECT: return "server-direct";
+      case TIME_NY_OFFSET:     return "ny-offset";
+   }
+   return "";
 }
 
 //==================================================================//

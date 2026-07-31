@@ -118,6 +118,30 @@ correct for daylight saving on its own.
 | Risk | `InpMaxTradesPerDay` | `2` | Daily cap |
 | Exec | `InpMagic` | `990045` | Unique per chart if running many |
 | Exec | `InpMaxSpreadPts` | `50` | Skip entries in wide spread |
+| Panel | `InpShowPanel` | `true` | Show the on-chart status panel |
+| Panel | `InpPanelCorner` | `LEFT_UPPER` | Which corner to anchor the panel |
+| Panel | `InpPanelX/Y/Font` | `12 / 20 / 9` | Panel position and font size |
+
+---
+
+## On-chart status panel
+
+With `InpShowPanel = true` a small live panel is drawn in the chart corner so you can
+confirm the EA is anchored correctly at a glance (no need to open the log):
+
+```
+ORB + SMC   USTEC
+Server 14:07  |  US DST: OFF (EST)
+NY 09:30 open -> server 14:30  (auto-DST)
+ORB: building range... closes 14:45
+Trade window ends: 18:30
+Trades today: 0/2   Long:-  Short:-
+```
+
+Once the opening range closes it switches to showing **ORB High / ORB Low** and the range
+size in points, plus which directions have fired for the day. **On Exness, confirm the
+"NY 09:30 open -> server" line reads 13:30 in summer or 14:30 in winter** — that's your
+proof the range is being built off the correct candle.
 
 ---
 
