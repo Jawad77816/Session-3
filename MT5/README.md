@@ -137,6 +137,15 @@ To keep it correct on any symbol/lot, the EA has `InpTargetMode`:
 | `InpShowDashboard` | true | On-chart info panel (left side) |
 | `InpDebugLogs` | false | Journal log of every trailing/grid decision |
 
+## Auto-GMT session fix (v6.2, all files)
+
+The PKT session window no longer depends on you hand-entering the broker's GMT
+offset. With **`InpAutoGMT = true`** (default) the EA derives PKT straight from
+true GMT (`TimeGMT() + 5h`), so it's correct on Exness or any broker regardless of
+their server timezone. `InpBrokerGMTOffset` is now only used **in the Strategy
+Tester** (where `TimeGMT()` returns server time) or if you turn AutoGMT off. The
+dashboard clock shows `GMT:auto` / `GMT:man` so you can confirm which is active.
+
 ## Trend-robustness variants (three separate EAs)
 
 Three standalone files, identical to the base strategy except for the **trend

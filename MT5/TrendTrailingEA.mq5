@@ -54,7 +54,7 @@
 //|     next grid add, floating P/L, spread, balance/equity.          |
 //+------------------------------------------------------------------+
 #property copyright "Session-3"
-#property version   "6.10"
+#property version   "6.20"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -100,7 +100,8 @@ input double             InpTrailStep      = 0.01;           // Min SL improveme
 input bool               InpLockBreakeven  = true;           // Once trailing arms, never let the SL close in loss
 
 input group "=== Session (Pakistan time, PKT = UTC+5) ==="
-input int                InpBrokerGMTOffset = 3;             // Broker server GMT offset in hours (e.g. +2 or +3)
+input bool               InpAutoGMT         = true;           // Derive PKT from true GMT (live); offset used only in tester
+input int                InpBrokerGMTOffset = 3;             // Broker server GMT offset (used only if AutoGMT off / in tester)
 input int                InpStartHourPKT    = 12;            // Start hour PKT (12 = 12:00 PM)
 input int                InpEndHourPKT      = 20;            // End hour PKT (20 = 8:00 PM) - no new trades from here
 
@@ -192,13 +193,26 @@ double MoneyFromDistance(double dist)
   }
 
 //+------------------------------------------------------------------+
-//| Server time -> PKT wall-clock (UTC+5)                            |
+//| Convert a broker SERVER time to PKT (UTC+5) wall-clock.           |
+//|  Live: derive from true GMT so it is broker-independent.          |
+//|  Tester / AutoGMT off: fall back to the manual broker GMT offset. |
 //+------------------------------------------------------------------+
+datetime ServerToPKT(datetime tServer)
+  {
+   long shift;
+   if(InpAutoGMT && !MQLInfoInteger(MQL_TESTER))
+     {
+      long serverOffset = (long)TimeCurrent() - (long)TimeGMT();  // server - GMT
+      shift = 5 * 3600 - serverOffset;                            // to GMT, then +5
+     }
+   else
+      shift = (long)(5 - InpBrokerGMTOffset) * 3600;
+   return (datetime)((long)tServer + shift);
+  }
+
 datetime PKTNow()
   {
-   // PKT = GMT+5;  GMT = server - offset;  so PKT = server + (5 - offset)
-   int shiftSec = (5 - InpBrokerGMTOffset) * 3600;
-   return (datetime)((long)TimeCurrent() + shiftSec);
+   return ServerToPKT(TimeCurrent());
   }
 
 //+------------------------------------------------------------------+
@@ -401,7 +415,7 @@ string NextNewsText()
 
    if(g_calNextTime > 0)
      {
-      datetime calPKT = (datetime)((long)g_calNextTime + (5 - InpBrokerGMTOffset) * 3600);
+      datetime calPKT = ServerToPKT(g_calNextTime);
       if(calPKT > nowPKT && (bestPKT == 0 || calPKT < bestPKT))
         {
          bestPKT = calPKT;
@@ -913,12 +927,13 @@ void UpdateDashboard()
    DashPanel();
    int r = 0;
 
-   DashLabel(r++, "TrendTrailingEA v6.1  " + _Symbol, cHead);
+   DashLabel(r++, "TrendTrailingEA v6.2  " + _Symbol, cHead);
 
    MqlDateTime pt;
    TimeToStruct(PKTNow(), pt);
-   DashLabel(r++, StringFormat("PKT %02d:%02d:%02d  (srv %s)",
-             pt.hour, pt.min, pt.sec, TimeToString(TimeCurrent(), TIME_MINUTES)), cText);
+   DashLabel(r++, StringFormat("PKT %02d:%02d:%02d  (srv %s)  GMT:%s",
+             pt.hour, pt.min, pt.sec, TimeToString(TimeCurrent(), TIME_MINUTES),
+             (InpAutoGMT && !MQLInfoInteger(MQL_TESTER)) ? "auto" : "man"), cText);
 
    bool inSes = IsWithinSession();
    DashLabel(r++, StringFormat("Session: %s (%02d-%02d PKT)",
