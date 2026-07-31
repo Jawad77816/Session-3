@@ -137,6 +137,34 @@ To keep it correct on any symbol/lot, the EA has `InpTargetMode`:
 | `InpShowDashboard` | true | On-chart info panel (left side) |
 | `InpDebugLogs` | false | Journal log of every trailing/grid decision |
 
+## Trend-robustness variants (three separate EAs)
+
+Three standalone files, identical to the base strategy except for the **trend
+layer**, so you can A/B/C them in the Strategy Tester. Each has its own default
+magic number, so all three can run together on a hedging account.
+
+| File | Trend TF | Signal TF | Robustness filters | Magic |
+|------|----------|-----------|--------------------|-------|
+| `TrendTrailingEA_1_H1.mq5` | **H1** | M5 | none (clean hierarchy) | 990131 |
+| `TrendTrailingEA_2_M5robust.mq5` | **M5** | M1 | deadband + confirm-bars + ADX | 990132 |
+| `TrendTrailingEA_3_H1robust.mq5` | **H1** | M5 | deadband + confirm-bars + ADX | 990133 |
+
+**Robustness filters** (builds 2 & 3), all toggleable:
+
+- **Deadband** (`InpDeadbandUSD`, 0.5): price must clear the MA by this buffer to
+  count as a trend — no flip-flop when price hugs the MA.
+- **Confirmation bars** (`InpConfirmBars`, 2): the trend only flips after N
+  consecutive HTF closes agree past the deadband; a single spike can't reverse it.
+- **ADX gate** (`InpADXThreshold`, 22): when ADX is below the threshold the market
+  is chop → trend reports FLAT and no new trades fire (last confirmed direction is
+  remembered for when momentum returns). The dashboard shows live ADX + "CHOP".
+
+Everything else — pivot rejection entries, independent BUY/SELL cycles, grid,
+trailing, breakeven lock, session/news, dashboard — is unchanged from v6.1.
+
+> Note: the session-time (auto-GMT) fix discussed earlier is **not** bundled here;
+> these three isolate the trend change only. Say the word to fold it in.
+
 ## v6.1 — grid double-open fixed
 
 - **No more duplicate grid trades on fast moves.** v6 decided "is this level
