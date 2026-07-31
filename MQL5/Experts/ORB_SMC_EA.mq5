@@ -29,15 +29,17 @@
 //--- Session / Opening Range ---------------------------------------
 enum ENUM_TIME_MODE
 {
-   TIME_SERVER_DIRECT = 0, // Set ORB start directly in broker SERVER time
-   TIME_NY_OFFSET     = 1  // Derive from New York 09:30 + broker offset
+   TIME_NY_AUTO_DST   = 0, // AUTO: 9:30 New York -> server, US daylight-saving aware (RECOMMENDED)
+   TIME_SERVER_DIRECT = 1, // Set ORB start directly in broker SERVER time
+   TIME_NY_OFFSET     = 2  // Fixed: New York 09:30 + a constant offset (no DST handling)
 };
 
 input group "=== Opening Range (session) ==="
-input ENUM_TIME_MODE  InpTimeMode        = TIME_SERVER_DIRECT; // How to anchor the 9:30 NY open
-input int             InpServerStartHour = 16;   // ORB start hour (SERVER time) [SERVER_DIRECT]
+input ENUM_TIME_MODE  InpTimeMode        = TIME_NY_AUTO_DST; // How to anchor the 9:30 NY open
+input double          InpBrokerUTCOffset = 0.0;  // Broker server's FIXED offset from UTC [NY_AUTO_DST]. Exness = 0
+input int             InpServerStartHour = 14;   // ORB start hour (SERVER time) [SERVER_DIRECT]
 input int             InpServerStartMin  = 30;   // ORB start minute (SERVER time) [SERVER_DIRECT]
-input double          InpNYtoServerHours = 7.0;  // Hours broker server is AHEAD of New York [NY_OFFSET]
+input double          InpNYtoServerHours = 0.0;  // Hours broker server is AHEAD of New York [NY_OFFSET]
 input ENUM_TIMEFRAMES InpORBTimeframe    = PERIOD_M15; // Timeframe of the ORB candle
 input int             InpTradeWindowMin  = 240;  // Minutes after session open to keep taking/holding entries
 
@@ -200,12 +202,24 @@ void ResetDay()
       startH = InpServerStartHour;
       startM = InpServerStartMin;
    }
-   else // TIME_NY_OFFSET : 09:30 NY + offset
+   else if(InpTimeMode == TIME_NY_OFFSET)
    {
+      // Fixed offset: 09:30 New York + constant hours ahead (no DST handling).
       int totalMin = 9*60 + 30 + (int)MathRound(InpNYtoServerHours * 60.0);
-      totalMin = ((totalMin % 1440) + 1440) % 1440; // wrap into 0..1439
+      totalMin = ((totalMin % 1440) + 1440) % 1440;
       startH = totalMin / 60;
       startM = totalMin % 60;
+   }
+   else // TIME_NY_AUTO_DST : 09:30 NY -> UTC (US DST aware) -> server (fixed UTC offset)
+   {
+      // New York offset from UTC: -4 during US daylight saving (EDT), else -5 (EST).
+      double nyOffset = IsUSDaylightSaving(g_dayStart) ? -4.0 : -5.0;
+      // UTC minutes = NY-local minutes - nyOffset ; server = UTC + broker's fixed UTC offset.
+      int utcMin    = 9*60 + 30 - (int)MathRound(nyOffset * 60.0);
+      int serverMin = utcMin + (int)MathRound(InpBrokerUTCOffset * 60.0);
+      serverMin = ((serverMin % 1440) + 1440) % 1440;
+      startH = serverMin / 60;
+      startM = serverMin % 60;
    }
 
    MqlDateTime s = dt;
@@ -223,6 +237,34 @@ void ResetDay()
 
    ObjectDelete(0, "ORB_HIGH");
    ObjectDelete(0, "ORB_LOW");
+}
+
+// Day-of-month of the Nth Sunday (n=1,2,...) of a given month/year.
+int NthSundayOfMonth(int year, int month, int n)
+{
+   MqlDateTime d;
+   d.year = year; d.mon = month; d.day = 1;
+   d.hour = 0; d.min = 0; d.sec = 0;
+   datetime t = StructToTime(d);
+   MqlDateTime dd;
+   TimeToStruct(t, dd);
+   int dow = dd.day_of_week;               // 0 = Sunday
+   int firstSunday = 1 + ((7 - dow) % 7);  // day-of-month of the 1st Sunday
+   return firstSunday + (n - 1) * 7;
+}
+
+// US daylight saving: 2nd Sunday of March 02:00 -> 1st Sunday of November 02:00.
+// Date-level granularity is fine here (the switch is at 02:00, well before 09:30).
+bool IsUSDaylightSaving(datetime t)
+{
+   MqlDateTime d;
+   TimeToStruct(t, d);
+   int y = d.year, m = d.mon, day = d.day;
+
+   if(m < 3 || m > 11) return false;   // Jan, Feb, Dec -> standard time
+   if(m > 3 && m < 11) return true;    // Apr..Oct       -> daylight saving
+   if(m == 3)  return (day >= NthSundayOfMonth(y, 3, 2));   // March: on/after 2nd Sunday
+   return (day < NthSundayOfMonth(y, 11, 1));               // November: before 1st Sunday
 }
 
 //==================================================================//

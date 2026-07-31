@@ -20,7 +20,7 @@ strategy video.
 
 | Setting | Recommended value | Why |
 |---|---|---|
-| **Symbol** | `US30` / `NAS100` (US100) / `US500`, or `XAUUSD` (Gold) | The strategy is built around the 9:30 New York open and previous-day-high/low liquidity. Indices and gold respond to it best. It also works on FX majors and BTCUSD, just less "cleanly." |
+| **Symbol** | On **Exness**: `USTEC` (Nasdaq‑100), `US30` (Dow), `US500` (S&P), or `XAUUSD` (Gold) | The strategy is built around the 9:30 New York open and previous-day-high/low liquidity. Indices and gold respond to it best. It also works on FX majors and BTCUSD, just less "cleanly." (Symbol names may carry a suffix like `m`/`z` depending on your Exness account type — use whatever appears in your Market Watch.) |
 | **Chart timeframe** | **M5** | The EA reads the ORB and FVG timeframes internally (M15 / M5), so the chart TF mostly affects how often `OnTick` new-bar logic runs and how the ORB lines draw. M5 aligns with the signal timeframe. M1 is fine too. |
 | **ORB timeframe (input)** | **M15** | The 15-minute opening range — the balance of risk/reliability the video recommends. |
 | **Signal timeframe (input)** | **M5** | Where breakout closes and FVGs are detected. |
@@ -35,25 +35,39 @@ The whole strategy hinges on the **9:30 AM New York (NYSE) open**. MT5 brokers r
 their **own server time**, which is usually *not* New York time. If this is wrong, the
 EA builds the range off the wrong candle and nothing else matters.
 
-Two ways to set it (input **`InpTimeMode`**):
+### ✅ Exness users — already set up for you (default)
 
-### Option A — `TIME_SERVER_DIRECT` (default, most reliable)
-You tell the EA the ORB start **in your broker's server time**.
-- Default is **16:30**, which equals 9:30 New York for the common **GMT+3 (summer) brokers**.
-- To find your value: open **Market Watch → right-click → Symbols**, or just look at the
-  time on the top-right of a chart candle vs. the real UTC/NY time, and compute the offset.
-- Quick reference (New York 9:30 → server time):
-  - Broker GMT+3 → **16:30**
-  - Broker GMT+2 → **15:30**
-  - Broker GMT+0 (UTC) → **13:30** (summer / EDT) or **14:30** (winter / EST)
+Exness trading servers are fixed at **GMT+0 (UTC) all year and do NOT shift for daylight
+saving**. But the New York 9:30 open *does* follow US daylight saving, so it lands at a
+different Exness server time by season:
 
-### Option B — `TIME_NY_OFFSET` (auto)
-You set **`InpNYtoServerHours`** = how many hours your broker server is *ahead of* New York.
-Most GMT+2/+3 brokers that follow US daylight saving are **+7** year-round → the EA
-computes 9:30 + 7:00 = **16:30** automatically.
+- **US summer (≈ Mar–Nov, EDT):** 9:30 NY = **13:30** Exness server time
+- **US winter (≈ Nov–Mar, EST):** 9:30 NY = **14:30** Exness server time
 
-> **Verify once:** After attaching, check the "ORB ready" line in the **Experts** log and
-> confirm the ORB High/Low lines are drawn on the correct 9:30-NY candle for your broker.
+The default mode **`TIME_NY_AUTO_DST`** with **`InpBrokerUTCOffset = 0`** handles this
+automatically — the EA computes 13:30 or 14:30 for you based on the date. **For Exness you
+don't need to change anything.** Just verify once (below).
+
+### The three time modes (input `InpTimeMode`)
+
+**`TIME_NY_AUTO_DST`** *(default, recommended — correct for Exness)*
+Give the EA your broker's **fixed** UTC offset in `InpBrokerUTCOffset` (Exness = `0`; a
+GMT+2 fixed-offset broker = `2`, etc.). The EA converts 9:30 New York → UTC (applying US
+daylight saving) → server time, automatically switching between the summer/winter server
+time. Only use this if your broker's offset is genuinely *fixed* year-round (Exness is).
+
+**`TIME_SERVER_DIRECT`** *(manual, most explicit)*
+You type the ORB start directly in **broker server time** (`InpServerStartHour/Min`).
+Useful for a broker whose server itself observes DST (GMT+2/+3 type) — set it to whatever
+9:30 NY currently equals on your server (e.g. 16:30 for many GMT+3 brokers).
+
+**`TIME_NY_OFFSET`** *(fixed offset, no DST math)*
+`InpNYtoServerHours` = constant hours the server is ahead of New York. Simple but does not
+correct for daylight saving on its own.
+
+> **Verify once (any broker):** After attaching, check the **"ORB ready"** line in the
+> **Experts** log and confirm the drawn ORB High/Low lines sit on the **9:30 New York**
+> candle. On Exness that candle opens at 13:30 (summer) / 14:30 (winter) server time.
 
 ---
 
@@ -85,9 +99,10 @@ computes 9:30 + 7:00 = **16:30** automatically.
 
 | Group | Input | Default | Notes |
 |---|---|---|---|
-| Session | `InpTimeMode` | `TIME_SERVER_DIRECT` | See "session time" above |
-| Session | `InpServerStartHour/Min` | `16:30` | ORB start in server time |
-| Session | `InpNYtoServerHours` | `7.0` | Only used in `TIME_NY_OFFSET` mode |
+| Session | `InpTimeMode` | `TIME_NY_AUTO_DST` | Recommended / correct for Exness. See "session time" above |
+| Session | `InpBrokerUTCOffset` | `0.0` | Broker's fixed UTC offset. **Exness = 0**. Used in `TIME_NY_AUTO_DST` |
+| Session | `InpServerStartHour/Min` | `14:30` | ORB start in server time (only used in `TIME_SERVER_DIRECT`) |
+| Session | `InpNYtoServerHours` | `0.0` | Only used in `TIME_NY_OFFSET` mode |
 | Session | `InpORBTimeframe` | `M15` | The opening-range candle |
 | Session | `InpTradeWindowMin` | `240` | Stop taking/holding new entries after this many minutes |
 | Signal | `InpSignalTimeframe` | `M5` | Breakout + FVG detection |
