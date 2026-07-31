@@ -137,6 +137,93 @@ To keep it correct on any symbol/lot, the EA has `InpTargetMode`:
 | `InpShowDashboard` | true | On-chart info panel (left side) |
 | `InpDebugLogs` | false | Journal log of every trailing/grid decision |
 
+## TrendTrailingEA_PRO — the all-in-one build (v7.0)
+
+Everything combined and tuned for **more frequency, fewer losses, better net**.
+Same core strategy (pivot-rejection entries in the trend direction, independent
+BUY/SELL cycles, grid, trailing, PKT session, news) plus every improvement:
+trend robustness, spread filter, ATR targets, partial-TP + runner, basket/daily
+risk caps, wick + RSI entry filters, stall exit, D1 pivot confluence, auto-GMT.
+
+Default magic 990077, default lot 0.02 (so partial-TP can split).
+
+### Full input reference
+
+| Input | Default | What it does |
+|-------|---------|--------------|
+| **Trend Filter** | | |
+| `InpTrendTF` | M5 | Timeframe of the trend MA. Higher = fewer, cleaner trends. |
+| `InpMAPeriod` / `InpMAMethod` / `InpMAPrice` | 50 / EMA / Close | The trend moving average. |
+| **Trend Robustness** | | |
+| `InpUseDeadband` / `InpDeadbandUSD` | true / 0.5 | Price must clear the MA by this buffer to count as a trend (stops flip-flop). |
+| `InpUseConfirmBars` / `InpConfirmBars` | true / 2 | Trend only flips after N consecutive HTF closes agree. |
+| `InpUseADX` / `InpADXPeriod` / `InpADXThreshold` | true / 14 / 20 | Only trade when ADX ≥ threshold; below = chop = FLAT, no trades. Raise for fewer/cleaner, lower for more. |
+| **Entry / Sizing** | | |
+| `InpLots` | 0.02 | Base lot. Keep ≥ 2× broker min lot or partial-TP can't split. |
+| `InpMagic` | 990077 | Position tag. Give each chart a unique value. |
+| `InpSignalTF` | M1 | Candle timeframe checked for rejections. Lower = **more trades**. |
+| `InpRejectionBuffer` | 0.0 | Body must close this far beyond the level to count. Raise to filter weak touches. |
+| **Entry Quality** | | |
+| `InpUseWickFilter` / `InpMinWickRatio` | true / 1.0 | Require a real rejection wick (wick ≥ ratio × body). Raise = stricter. |
+| `InpUseRSI` / `InpRSIPeriod` | true / 14 | RSI confluence: buy only when not overbought, sell only when not oversold. |
+| `InpRSIOB` / `InpRSIOS` | 60 / 40 | Sell needs RSI ≥ OB; buy needs RSI ≤ OS. Widen toward 50/50 for **more trades**, toward 70/30 for fewer/better. |
+| **Spread Filter** | | |
+| `InpUseSpreadFilter` / `InpMaxSpreadPts` | true / 50 | Block new trades when spread (points) exceeds this. Removes high-cost fills. |
+| **Targets (fixed OR ATR)** | | |
+| `InpTargetMode` | MONEY_USD | How the *fixed* TP/SL below are read (USD vs raw price). |
+| `InpTakeProfit` / `InpStopLoss` | 6 / 6 | Fixed TP/SL — used only when ATR is off. |
+| `InpTrailStart` / `InpTrailDistance` / `InpTrailStep` | 0.3 / 0.3 / 0.05 | Fixed trailing (used when ATR off). Gap = sharpness, step = quickness. |
+| `InpLockBreakeven` | true | Once trailing arms, SL never closes at a loss. |
+| `InpUseATR` | true | **Master switch**: size TP/SL/trailing/grid from ATR instead of the fixed numbers. |
+| `InpATRTF` / `InpATRPeriod` | M5 / 14 | ATR source. |
+| `InpATR_TP` / `InpATR_SL` | 1.0 / 1.2 | TP = ×ATR, SL = ×ATR. |
+| `InpATR_TrailStart` / `InpATR_TrailDist` / `InpATR_GridStep` | 0.5 / 0.5 / 0.8 | Trailing + grid step as ×ATR. |
+| **Partial TP + Runner** | | |
+| `InpUsePartialTP` | true | Close part at TP1, move SL to breakeven, run the rest. Needs lot ≥ 2× min. |
+| `InpPartialPct` | 50 | % of the position closed at TP1. |
+| `InpTP1Frac` | 0.5 | TP1 sits this fraction of the way to full TP. |
+| **Risk Caps** | | |
+| `InpUseBasketStop` / `InpBasketStopUSD` | true / 40 | Close **everything** if total floating loss hits this. The main guardrail. |
+| `InpUseDailyLoss` / `InpDailyLossUSD` | true / 60 | Stop opening new trades after this much loss today. |
+| `InpUseDailyProfit` / `InpDailyProfitUSD` | true / 60 | Stop opening new trades after this much profit today (lock the day). |
+| `InpCooldownMin` | 30 | Minutes to pause new trades after a basket stop. |
+| **Stall Exit** | | |
+| `InpUseStallExit` / `InpMaxTradeMinutes` | true / 120 | Close any trade older than this (frees margin, dodges reversals). 0 = off. |
+| **Grid** | | |
+| `InpEnableGrid` | true | Add trades as price moves against the first. |
+| `InpGridStepUSD` | 4.0 | Fixed grid step (used only when ATR off). |
+| `InpMaxGridTrades` | 3 | Max trades per side per cycle. Lower = safer. |
+| `InpGridRespectFilters` | false | If true, grid adds also obey session/news. |
+| **Pivots + Confluence** | | |
+| `InpShowPivots` | true | Draw the S/R lines. |
+| `InpPivotMethod` | Standard | Standard / Fibonacci / Camarilla / Woodie. |
+| `InpPivotTF` | M30 | Primary pivots (what rejections are measured against). Lower = **more levels/trades**. |
+| `InpUseConfluence` | true | Bigger size when a level lines up with a higher-TF pivot. |
+| `InpPivot2TF` | D1 | The confluence timeframe. |
+| `InpConfluenceTolUSD` | 1.0 | How close the two levels must be to count as confluent. |
+| `InpConfluenceLots` | 0.03 | Lot used on an A+ (confluent) rejection. |
+| **Session (PKT)** | | |
+| `InpAutoGMT` | true | Derive PKT from true GMT (leave ON for live). |
+| `InpBrokerGMTOffset` | 3 | Broker server GMT offset — used only in tester / AutoGMT off. |
+| `InpStartHourPKT` / `InpEndHourPKT` | 12 / 20 | Session window in PKT. |
+| **News** | | |
+| `InpUseNewsFilter` | true | Enable the news blackout. |
+| `InpNewsMinsBefore` / `InpNewsMinsAfter` | 15 / 15 | Blackout window around each event. |
+| `InpManualNewsPKT` | "" | Manual PKT news times (works in tester). |
+| `InpUseCalendarAuto` / `InpNewsImportance` / `InpNewsCurrencies` | true / 3 / USD | MT5 economic calendar (live only). |
+| **Dashboard & Debug** | | |
+| `InpShowDashboard` | true | On-chart info panel. |
+| `InpDebugLogs` | false | Log every entry/grid/trailing/partial/stall/basket decision. |
+
+### Levers if you want *more frequency*
+`InpSignalTF` M1→ (already lowest), `InpPivotTF` lower (M30→M15), widen RSI toward
+50/50 or turn `InpUseRSI` off, lower `InpMinWickRatio`, lower `InpADXThreshold`.
+
+### Levers if you want *fewer losses*
+Raise `InpADXThreshold`, tighten RSI toward 70/30, raise `InpMinWickRatio`, lower
+`InpMaxSpreadPts`, lower `InpMaxGridTrades`, tighten `InpBasketStopUSD` /
+`InpDailyLossUSD`.
+
 ## Auto-GMT session fix (v6.2, all files)
 
 The PKT session window no longer depends on you hand-entering the broker's GMT
