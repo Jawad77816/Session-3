@@ -147,6 +147,12 @@ risk caps, wick + RSI entry filters, stall exit, D1 pivot confluence, auto-GMT.
 
 Default magic 990077, default lot 0.02 (so partial-TP can split).
 
+**`TrendTrailingEA_PRO_LITE.mq5`** is the identical build with a **lower-risk
+preset**: `InpLots = 0.01`, `InpUsePartialTP = false` (0.01 can't be split),
+`InpConfluenceLots = 0.02`, magic **990078**. Same code, so it runs alongside PRO
+for a clean A/B on lot size and partial-TP. Everything else is tunable exactly as
+in the table below.
+
 ### Full input reference
 
 | Input | Default | What it does |
