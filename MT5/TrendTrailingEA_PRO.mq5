@@ -18,7 +18,7 @@
 //|  *** Grid averages into losers. Even with caps, test on demo. *** |
 //+------------------------------------------------------------------+
 #property copyright "Session-3"
-#property version   "7.00"
+#property version   "7.10"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -37,7 +37,18 @@ enum ENUM_PIVOT_METHOD
    PIVOT_WOODIE    = 3    // Woodie pivots
   };
 
+//--- Quick preset mode (sets lot, partial-TP, A+ lot)
+enum ENUM_EA_MODE
+  {
+   EAMODE_PRO    = 0,   // PRO:  0.02 lot, partial-TP ON, A+ lot 0.03
+   EAMODE_LITE   = 1,   // LITE: 0.01 lot, partial-TP OFF, A+ lot 0.02
+   EAMODE_CUSTOM = 2    // CUSTOM: use the Base lot / Partial / A+ lot inputs below
+  };
+
 //============================ INPUTS ================================//
+input group "=== MODE (preset) ==="
+input ENUM_EA_MODE       InpMode           = EAMODE_LITE;    // PRO / LITE / CUSTOM (overrides Base lot, Partial-TP, A+ lot)
+
 input group "=== Trend Filter (higher timeframe) ==="
 input ENUM_TIMEFRAMES    InpTrendTF        = PERIOD_M5;      // Higher timeframe for trend
 input int                InpMAPeriod       = 50;             // Trend MA period
@@ -54,7 +65,7 @@ input int                InpADXPeriod      = 14;            // ADX period (on th
 input double             InpADXThreshold   = 20.0;          // Minimum ADX to call it a trend
 
 input group "=== Entry / Sizing ==="
-input double             InpLots           = 0.02;          // Base lot (>=2x min lot so partial-TP can split)
+input double             InpLots           = 0.02;          // Base lot (CUSTOM mode only; >=2x min for partial)
 input long               InpMagic          = 990077;        // Magic number
 input ENUM_TIMEFRAMES    InpSignalTF       = PERIOD_M1;     // Timeframe whose candles are checked for rejections
 input double             InpRejectionBuffer = 0.0;          // Extra distance (USD/price) body must close beyond level
@@ -89,7 +100,7 @@ input double             InpATR_TrailDist  = 0.5;           // Trail gap      = 
 input double             InpATR_GridStep   = 0.8;           // Grid step      = this * ATR
 
 input group "=== Partial Take-Profit + Runner ==="
-input bool               InpUsePartialTP   = true;          // Close part at TP1, run the rest (needs lot>=2x min)
+input bool               InpUsePartialTP   = true;          // Partial-TP (CUSTOM mode only; needs lot>=2x min)
 input double             InpPartialPct      = 50.0;         // Percent of volume to close at TP1
 input double             InpTP1Frac         = 0.5;          // TP1 distance = this * full TP distance
 
@@ -119,7 +130,7 @@ input ENUM_TIMEFRAMES    InpPivotTF         = PERIOD_M30;   // Primary pivot tim
 input bool               InpUseConfluence   = true;         // Bigger size when level aligns with a higher-TF pivot
 input ENUM_TIMEFRAMES    InpPivot2TF        = PERIOD_D1;    // Confluence pivot timeframe
 input double             InpConfluenceTolUSD = 1.0;         // Max distance (USD/price) to count as confluent
-input double             InpConfluenceLots   = 0.03;        // Lot on a confluent (A+) rejection
+input double             InpConfluenceLots   = 0.03;        // A+ (confluent) lot (CUSTOM mode only)
 
 input group "=== Session (Pakistan time, PKT = UTC+5) ==="
 input bool               InpAutoGMT         = true;         // Derive PKT from true GMT (live); offset only in tester
@@ -190,13 +201,33 @@ struct CycleInfo
   };
 
 //========================= BASIC HELPERS ==========================//
+// Effective values driven by the selected MODE (Custom uses the inputs).
+double EffLots()
+  {
+   if(InpMode == EAMODE_PRO)  return 0.02;
+   if(InpMode == EAMODE_LITE) return 0.01;
+   return InpLots;
+  }
+bool EffPartial()
+  {
+   if(InpMode == EAMODE_PRO)  return true;
+   if(InpMode == EAMODE_LITE) return false;
+   return InpUsePartialTP;
+  }
+double EffConfluenceLots()
+  {
+   if(InpMode == EAMODE_PRO)  return 0.03;
+   if(InpMode == EAMODE_LITE) return 0.02;
+   return InpConfluenceLots;
+  }
+
 double DistanceToPrice(double value)
   {
    if(InpTargetMode == MODE_PRICE_POINTS) return value;
    double tv = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
    double ts = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-   if(tv <= 0.0 || ts <= 0.0 || InpLots <= 0.0) return value;
-   return value * ts / (tv * InpLots);
+   if(tv <= 0.0 || ts <= 0.0 || EffLots() <= 0.0) return value;
+   return value * ts / (tv * EffLots());
   }
 
 double MoneyFromDistance(double dist)
@@ -204,7 +235,7 @@ double MoneyFromDistance(double dist)
    double tv = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
    double ts = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
    if(ts <= 0.0) return 0.0;
-   return dist / ts * tv * InpLots;
+   return dist / ts * tv * EffLots();
   }
 
 double CurrentATR()
@@ -312,7 +343,7 @@ int OnInit()
 
    EventSetTimer(1);
 
-   if(InpUsePartialTP && InpLots < 2*g_minLot - 1e-9)
+   if(EffPartial() && EffLots() < 2*g_minLot - 1e-9)
       Print("WARNING: Partial-TP needs lot >= 2x min lot (", DoubleToString(2*g_minLot,2), "). It will be skipped at current lot.");
    if(InpEnableGrid)
       Print("WARNING: Grid averages into losers. Basket stop and daily loss limit are the guardrails - keep them on.");
@@ -583,7 +614,7 @@ void ManageGridSide(const long posType, const int dir, const int trend)
    if(GridLevelFilled(posType, refPrice, step*0.5)) return;
 
    if(InpDebugLogs) PrintFormat("GRID: %s add #%d (adverse %.2f)", (dir>0?"BUY":"SELL"), gridOpen+1, adverse);
-   OpenTrade(dir, InpLots);
+   OpenTrade(dir, EffLots());
   }
 void ManageGrid()
   {
@@ -646,7 +677,7 @@ void ManageTrailing()
 //===================== PARTIAL TP + RUNNER ========================//
 void ManagePartials()
   {
-   if(!InpUsePartialTP) return;
+   if(!EffPartial()) return;
    for(int i = PositionsTotal()-1; i >= 0; i--)
      {
       ulong ticket = PositionGetTicket(i);
@@ -887,7 +918,8 @@ void UpdateDashboard()
    color cText=clrSilver, cGood=clrLimeGreen, cBad=clrTomato, cWarn=clrOrange, cHead=clrGold, cDim=C'90,100,120';
    DashPanel();
    int r = 0;
-   DashLabel(r++, "TrendTrailing PRO v7.0  " + _Symbol, cHead);
+   string modeTxt = (InpMode==EAMODE_PRO)?"PRO":(InpMode==EAMODE_LITE)?"LITE":"CUSTOM";
+   DashLabel(r++, StringFormat("TrendTrailing v7.1 [%s]  %s", modeTxt, _Symbol), cHead);
    MqlDateTime pt; TimeToStruct(PKTNow(), pt);
    DashLabel(r++, StringFormat("PKT %02d:%02d:%02d (srv %s) GMT:%s", pt.hour, pt.min, pt.sec,
              TimeToString(TimeCurrent(),TIME_MINUTES), (InpAutoGMT && !MQLInfoInteger(MQL_TESTER))?"auto":"man"), cText);
@@ -964,7 +996,7 @@ void OnTick()
       if(rej < 0 && rsi < InpRSIOB) return;        // sell needs overbought
      }
 
-   double lots = (InpUseConfluence && IsConfluent(g_rejLevel)) ? InpConfluenceLots : InpLots;
+   double lots = (InpUseConfluence && IsConfluent(g_rejLevel)) ? EffConfluenceLots() : EffLots();
    if(InpDebugLogs)
       PrintFormat("ENTRY %s  rejLevel %.2f  conf=%s  lots=%.2f", (trend>0?"BUY":"SELL"), g_rejLevel,
                   (IsConfluent(g_rejLevel)?"yes":"no"), lots);

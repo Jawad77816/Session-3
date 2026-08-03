@@ -7,8 +7,7 @@ magic number, so any of them can run together without touching each other's trad
 
 | I want to… | Run this |
 |------------|----------|
-| **Trade for real with every improvement, and I accept ~0.02-lot risk** | `TrendTrailingEA_PRO` |
-| **Same, but keep risk at 0.01 / no partial-TP** | `TrendTrailingEA_PRO_LITE` |
+| **Trade for real with every improvement** | `TrendTrailingEA_PRO` — set **Mode** at the top: PRO (0.02, partial-TP) / LITE (0.01, no partial) / CUSTOM |
 | **A clean, simple base to understand or tune from** | `TrendTrailingEA` |
 | **Test if a clean H1→M5 hierarchy alone is enough** | `TrendTrailingEA_1_H1` |
 | **Keep M5 responsiveness but tame the whipsaw** | `TrendTrailingEA_2_M5robust` |
@@ -23,8 +22,7 @@ magic number, so any of them can run together without touching each other's trad
 | `TrendTrailingEA_1_H1` | Core, H1 trend / M5 signal, no robustness | 990131 | 0.01 | Cleanest hierarchy |
 | `TrendTrailingEA_2_M5robust` | Core + robustness, M5 trend / M1 signal | 990132 | 0.01 | Most frequent, filters tame M5 noise |
 | `TrendTrailingEA_3_H1robust` | Core + robustness, H1 trend / M5 signal | 990133 | 0.01 | Fewest, cleanest trades |
-| `TrendTrailingEA_PRO` | Everything: robustness + spread filter + ATR targets + partial-TP + risk caps + wick/RSI filters + stall exit + D1 confluence | 990077 | 0.02 | Partial-TP needs 0.02 |
-| `TrendTrailingEA_PRO_LITE` | PRO with 0.01 lot, partial-TP off | 990078 | 0.01 | Lower risk; A/B vs PRO |
+| `TrendTrailingEA_PRO` | Everything: robustness + spread filter + ATR targets + partial-TP + risk caps + wick/RSI filters + stall exit + D1 confluence. **Mode** input at top = PRO / LITE / CUSTOM | 990077 | by Mode | LITE=0.01 no partial; PRO=0.02 partial |
 | `PivotRejectionEA` | Standalone rejection scalper, TP1/SL6, no trend/grid | 990044 | 0.01 | Different strategy |
 
 ## Install (any file)
