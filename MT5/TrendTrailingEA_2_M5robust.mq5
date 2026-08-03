@@ -327,8 +327,11 @@ void OnDeinit(const int reason)
       IndicatorRelease(maHandle);
    if(adxHandle != INVALID_HANDLE)
       IndicatorRelease(adxHandle);
-   ObjectsDeleteAll(0, "PIV_");
-   ObjectsDeleteAll(0, "DB_");
+   if(reason == REASON_REMOVE || reason == REASON_CHARTCLOSE)
+     {
+      ObjectsDeleteAll(0, "PIV_");
+      ObjectsDeleteAll(0, "DB_");
+     }
   }
 
 //+------------------------------------------------------------------+
@@ -1034,6 +1037,7 @@ void UpdateDashboard()
 //+------------------------------------------------------------------+
 void OnTimer()
   {
+   UpdatePivots();      // redraw pivots without waiting for a tick (e.g. after a settings change)
    UpdateDashboard();
   }
 

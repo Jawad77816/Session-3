@@ -329,8 +329,11 @@ void OnDeinit(const int reason)
    if(adxHandle != INVALID_HANDLE) IndicatorRelease(adxHandle);
    if(atrHandle != INVALID_HANDLE) IndicatorRelease(atrHandle);
    if(rsiHandle != INVALID_HANDLE) IndicatorRelease(rsiHandle);
-   ObjectsDeleteAll(0, "PIV_");
-   ObjectsDeleteAll(0, "DB_");
+   if(reason == REASON_REMOVE || reason == REASON_CHARTCLOSE)
+     {
+      ObjectsDeleteAll(0, "PIV_");
+      ObjectsDeleteAll(0, "DB_");
+     }
   }
 
 //============================ TREND ===============================//
@@ -921,7 +924,7 @@ void UpdateDashboard()
    ChartRedraw();
   }
 
-void OnTimer() { UpdateDashboard(); }
+void OnTimer() { UpdatePivots(); UpdateDashboard(); }
 
 //============================ TICK ================================//
 void OnTick()
