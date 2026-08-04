@@ -1,0 +1,418 @@
+//+------------------------------------------------------------------+
+//|                                       ThreeCandleReversalEA.mq5   |
+//|                          Three-Candle Reversal Pattern EA (XAUUSD)|
+//|                                                                  |
+//|  Strategy (evaluated on each newly closed bar):                  |
+//|                                                                  |
+//|  Bars used (index 0 = current forming bar, not used):            |
+//|      First  candle = bar index 3 (oldest of the three)           |
+//|      Middle candle = bar index 2                                 |
+//|      Third  candle = bar index 1 (most recently closed)          |
+//|                                                                  |
+//|  BUY  : red(3) -> green(2) -> green(3rd)                         |
+//|          middle LOW  (incl. wick) < first LOW  AND < third LOW   |
+//|          third candle BODY top (close) engulfs first candle HIGH |
+//|                                                                  |
+//|  SELL : green(3) -> red(2) -> red(3rd)                           |
+//|          middle HIGH (incl. wick) > first HIGH AND > third HIGH  |
+//|          third candle BODY bottom (close) engulfs first candle LOW|
+//|                                                                  |
+//|  Fixed TP / SL, both manually adjustable. Built for M1 & M5,     |
+//|  XAUUSD only.                                                     |
+//+------------------------------------------------------------------+
+#property copyright "Three-Candle Reversal EA"
+#property version   "1.00"
+#property strict
+#property description "Three-candle reversal pattern EA for XAUUSD on M1/M5."
+#property description "First/Middle/Third candle body & wick rules with fixed TP/SL."
+
+#include <Trade/Trade.mqh>
+
+//+------------------------------------------------------------------+
+//| Enumerations                                                     |
+//+------------------------------------------------------------------+
+enum ENUM_TPSL_MODE
+  {
+   TPSL_PRICE_USD = 0,   // Distance in USD of price movement (1.0 = $1 gold move)
+   TPSL_MONEY_USD = 1    // Target profit/loss in account currency
+  };
+
+//+------------------------------------------------------------------+
+//| Inputs                                                           |
+//+------------------------------------------------------------------+
+input group    "=== Money Management ==="
+input double         InpLotSize        = 0.01;            // Fixed lot size
+input ENUM_TPSL_MODE InpTpSlMode       = TPSL_PRICE_USD;  // How TP/SL values are interpreted
+input double         InpTakeProfit     = 1.0;             // Take Profit (USD)  <-- adjustable
+input double         InpStopLoss       = 1.0;             // Stop Loss  (USD)   <-- adjustable
+
+input group    "=== Trade Filters ==="
+input bool           InpEnableBuy      = true;            // Allow BUY trades
+input bool           InpEnableSell     = true;            // Allow SELL trades
+input int            InpMaxPositions   = 1;               // Max simultaneous EA positions
+input double         InpMaxSpreadUSD   = 0.0;             // Max allowed spread in USD (0 = off)
+
+input group    "=== Instrument / Timeframe Guards ==="
+input bool           InpRestrictSymbol    = true;         // Only run on XAUUSD-type symbol
+input bool           InpRestrictTimeframe = true;         // Only run on M1 / M5
+
+input group    "=== Execution ==="
+input long           InpMagicNumber    = 20250804;        // Magic number
+input int            InpDeviationPts   = 30;              // Max deviation/slippage (points)
+input string         InpTradeComment   = "3CandleEA";     // Trade comment
+
+//+------------------------------------------------------------------+
+//| Globals                                                          |
+//+------------------------------------------------------------------+
+CTrade         trade;
+datetime       g_lastBarTime = 0;      // used for new-bar detection
+int            g_symDigits   = 2;
+double         g_symPoint    = 0.01;
+double         g_tickSize    = 0.01;
+double         g_tickValue   = 1.0;
+
+//+------------------------------------------------------------------+
+//| Helper: is this a gold / XAUUSD-style symbol                     |
+//+------------------------------------------------------------------+
+bool IsGoldSymbol(const string sym)
+  {
+   string s = sym;
+   StringToUpper(s);
+   // Matches XAUUSD, XAUUSD.m, XAUUSDx, GOLD, etc.
+   if(StringFind(s, "XAU") >= 0) return true;
+   if(StringFind(s, "GOLD") >= 0) return true;
+   return false;
+  }
+
+//+------------------------------------------------------------------+
+//| Helper: allowed timeframe (M1 or M5 only)                        |
+//+------------------------------------------------------------------+
+bool IsAllowedTimeframe(const ENUM_TIMEFRAMES tf)
+  {
+   return (tf == PERIOD_M1 || tf == PERIOD_M5);
+  }
+
+//+------------------------------------------------------------------+
+//| Expert initialization                                            |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+   // --- Symbol guard ---------------------------------------------------
+   if(InpRestrictSymbol && !IsGoldSymbol(_Symbol))
+     {
+      Print("ERROR: This EA is built for XAUUSD (gold). Current symbol: ", _Symbol,
+            ". Attach it to gold or disable 'InpRestrictSymbol'.");
+      return(INIT_FAILED);
+     }
+
+   // --- Timeframe guard ------------------------------------------------
+   if(InpRestrictTimeframe && !IsAllowedTimeframe((ENUM_TIMEFRAMES)_Period))
+     {
+      Print("ERROR: This EA supports only M1 and M5. Current timeframe: ",
+            EnumToString((ENUM_TIMEFRAMES)_Period),
+            ". Switch to M1/M5 or disable 'InpRestrictTimeframe'.");
+      return(INIT_FAILED);
+     }
+
+   // --- Input validation ----------------------------------------------
+   if(InpLotSize <= 0.0)
+     {
+      Print("ERROR: InpLotSize must be > 0.");
+      return(INIT_FAILED);
+     }
+   if(InpTakeProfit <= 0.0 || InpStopLoss <= 0.0)
+     {
+      Print("ERROR: TakeProfit and StopLoss must be > 0.");
+      return(INIT_FAILED);
+     }
+   if(!InpEnableBuy && !InpEnableSell)
+      Print("WARNING: Both BUY and SELL are disabled - EA will not trade.");
+
+   // --- Cache symbol properties ---------------------------------------
+   g_symDigits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+   g_symPoint  = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   g_tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   g_tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   if(g_tickSize <= 0.0) g_tickSize = g_symPoint;
+
+   // --- Configure trade object ----------------------------------------
+   trade.SetExpertMagicNumber(InpMagicNumber);
+   trade.SetDeviationInPoints(InpDeviationPts);
+   trade.SetTypeFillingBySymbol(_Symbol);
+   trade.SetAsyncMode(false);
+   trade.LogLevel(LOG_LEVEL_ERRORS);
+
+   // Initialise new-bar detector so we don't fire on the first tick
+   g_lastBarTime = (datetime)SeriesInfoInteger(_Symbol, _Period, SERIES_LASTBAR_DATE);
+
+   PrintFormat("ThreeCandleReversalEA initialised on %s %s | digits=%d point=%.*f tickSize=%.*f tickValue=%.5f",
+               _Symbol, EnumToString((ENUM_TIMEFRAMES)_Period),
+               g_symDigits, g_symDigits, g_symPoint, g_symDigits, g_tickSize, g_tickValue);
+
+   return(INIT_SUCCEEDED);
+  }
+
+//+------------------------------------------------------------------+
+//| Expert deinitialization                                          |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+  {
+   PrintFormat("ThreeCandleReversalEA stopped. Reason=%d", reason);
+  }
+
+//+------------------------------------------------------------------+
+//| New bar detection                                                |
+//+------------------------------------------------------------------+
+bool IsNewBar()
+  {
+   datetime curBarTime = (datetime)SeriesInfoInteger(_Symbol, _Period, SERIES_LASTBAR_DATE);
+   if(curBarTime == 0)
+      return(false);
+   if(curBarTime != g_lastBarTime)
+     {
+      g_lastBarTime = curBarTime;
+      return(true);
+     }
+   return(false);
+  }
+
+//+------------------------------------------------------------------+
+//| Count open positions that belong to this EA (symbol + magic)     |
+//+------------------------------------------------------------------+
+int CountEaPositions()
+  {
+   int count = 0;
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != InpMagicNumber) continue;
+      count++;
+     }
+   return(count);
+  }
+
+//+------------------------------------------------------------------+
+//| Spread filter (in USD of price)                                  |
+//+------------------------------------------------------------------+
+bool SpreadOK()
+  {
+   if(InpMaxSpreadUSD <= 0.0)
+      return(true);
+   double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+   double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+   double spread = ask - bid;
+   if(spread > InpMaxSpreadUSD)
+     {
+      PrintFormat("Skip: spread %.*f > max %.*f", g_symDigits, spread, g_symDigits, InpMaxSpreadUSD);
+      return(false);
+     }
+   return(true);
+  }
+
+//+------------------------------------------------------------------+
+//| Convert TP/SL input into a price distance (in price units)       |
+//+------------------------------------------------------------------+
+double ResolveDistance(const double value)
+  {
+   if(InpTpSlMode == TPSL_PRICE_USD)
+     {
+      // For XAUUSD, 1 unit of price = $1 move, so distance == value.
+      return(value);
+     }
+   else // TPSL_MONEY_USD -> convert money target to price distance
+     {
+      double perUnit = g_tickValue / g_tickSize;          // account money per 1.0 price move per 1 lot
+      double denom   = perUnit * InpLotSize;
+      if(denom <= 0.0)
+        {
+         Print("ERROR: cannot resolve money-based distance (tickValue/tickSize/lot invalid).");
+         return(0.0);
+        }
+      return(value / denom);
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Clamp a stop distance to the broker minimum (stops level)        |
+//+------------------------------------------------------------------+
+double ClampToStopsLevel(double distance)
+  {
+   long stopsLevelPts = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   double minDist = (double)stopsLevelPts * g_symPoint;
+   // add a small buffer of one point
+   if(minDist > 0.0 && distance < minDist)
+     {
+      PrintFormat("WARNING: requested distance %.*f below broker min %.*f - adjusting.",
+                  g_symDigits, distance, g_symDigits, minDist);
+      distance = minDist + g_symPoint;
+     }
+   return(distance);
+  }
+
+//+------------------------------------------------------------------+
+//| Candle helpers (shift-based)                                     |
+//+------------------------------------------------------------------+
+bool IsBull(const double o, const double c) { return(c > o); }   // green
+bool IsBear(const double o, const double c) { return(c < o); }   // red
+
+//+------------------------------------------------------------------+
+//| Evaluate the three-candle pattern on closed bars 1,2,3           |
+//|   returns:  1 = BUY signal, -1 = SELL signal, 0 = none           |
+//+------------------------------------------------------------------+
+int CheckPattern()
+  {
+   // Need at least 4 bars (0 forming + 1,2,3 closed)
+   if(Bars(_Symbol, _Period) < 5)
+      return(0);
+
+   // First = shift 3, Middle = shift 2, Third = shift 1
+   double o1 = iOpen (_Symbol, _Period, 3);  // first
+   double c1 = iClose(_Symbol, _Period, 3);
+   double h1 = iHigh (_Symbol, _Period, 3);
+   double l1 = iLow  (_Symbol, _Period, 3);
+
+   double o2 = iOpen (_Symbol, _Period, 2);  // middle
+   double c2 = iClose(_Symbol, _Period, 2);
+   double h2 = iHigh (_Symbol, _Period, 2);
+   double l2 = iLow  (_Symbol, _Period, 2);
+
+   double o3 = iOpen (_Symbol, _Period, 1);  // third
+   double c3 = iClose(_Symbol, _Period, 1);
+   double h3 = iHigh (_Symbol, _Period, 1);
+   double l3 = iLow  (_Symbol, _Period, 1);
+
+   // Guard against invalid data
+   if(o1 == 0 || o2 == 0 || o3 == 0)
+      return(0);
+
+   //------------------------------------------------------------------
+   // BUY pattern
+   //   first red, middle green, third green
+   //   middle low is lowest of the three (incl. wicks)
+   //   third candle BODY top (close, since green) engulfs first HIGH
+   //------------------------------------------------------------------
+   if(InpEnableBuy)
+     {
+      bool colorsOK = IsBear(o1, c1) && IsBull(o2, c2) && IsBull(o3, c3);
+      bool middleLowLowest = (l2 < l1) && (l2 < l3);
+      bool bodyEngulfHigh   = (c3 > h1);  // green body top = close
+      if(colorsOK && middleLowLowest && bodyEngulfHigh)
+        {
+         PrintFormat("BUY pattern: first[red] o=%.*f c=%.*f h=%.*f | mid[green] l=%.*f | third[green] close=%.*f > firstHigh=%.*f",
+                     g_symDigits,o1,g_symDigits,c1,g_symDigits,h1,g_symDigits,l2,g_symDigits,c3,g_symDigits,h1);
+         return(1);
+        }
+     }
+
+   //------------------------------------------------------------------
+   // SELL pattern
+   //   first green, middle red, third red
+   //   middle high is highest of the three (incl. wicks)
+   //   third candle BODY bottom (close, since red) engulfs first LOW
+   //------------------------------------------------------------------
+   if(InpEnableSell)
+     {
+      bool colorsOK = IsBull(o1, c1) && IsBear(o2, c2) && IsBear(o3, c3);
+      bool middleHighHighest = (h2 > h1) && (h2 > h3);
+      bool bodyEngulfLow      = (c3 < l1);  // red body bottom = close
+      if(colorsOK && middleHighHighest && bodyEngulfLow)
+        {
+         PrintFormat("SELL pattern: first[green] o=%.*f c=%.*f l=%.*f | mid[red] h=%.*f | third[red] close=%.*f < firstLow=%.*f",
+                     g_symDigits,o1,g_symDigits,c1,g_symDigits,l1,g_symDigits,h2,g_symDigits,c3,g_symDigits,l1);
+         return(-1);
+        }
+     }
+
+   return(0);
+  }
+
+//+------------------------------------------------------------------+
+//| Open a trade in the given direction                              |
+//|   dir = +1 buy, -1 sell                                          |
+//+------------------------------------------------------------------+
+void OpenTrade(const int dir)
+  {
+   double tpDist = ResolveDistance(InpTakeProfit);
+   double slDist = ResolveDistance(InpStopLoss);
+   if(tpDist <= 0.0 || slDist <= 0.0)
+     {
+      Print("ERROR: invalid TP/SL distance - trade skipped.");
+      return;
+     }
+   tpDist = ClampToStopsLevel(tpDist);
+   slDist = ClampToStopsLevel(slDist);
+
+   double price, sl, tp;
+   bool ok = false;
+
+   if(dir > 0) // BUY at Ask
+     {
+      price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      sl = NormalizeDouble(price - slDist, g_symDigits);
+      tp = NormalizeDouble(price + tpDist, g_symDigits);
+      ok = trade.Buy(InpLotSize, _Symbol, price, sl, tp, InpTradeComment);
+     }
+   else        // SELL at Bid
+     {
+      price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      sl = NormalizeDouble(price + slDist, g_symDigits);
+      tp = NormalizeDouble(price - tpDist, g_symDigits);
+      ok = trade.Sell(InpLotSize, _Symbol, price, sl, tp, InpTradeComment);
+     }
+
+   if(ok)
+     {
+      PrintFormat("%s opened: lots=%.2f price=%.*f SL=%.*f TP=%.*f retcode=%u deal=%I64u",
+                  (dir > 0 ? "BUY" : "SELL"), InpLotSize,
+                  g_symDigits, price, g_symDigits, sl, g_symDigits, tp,
+                  trade.ResultRetcode(), trade.ResultDeal());
+     }
+   else
+     {
+      PrintFormat("%s FAILED: retcode=%u (%s)",
+                  (dir > 0 ? "BUY" : "SELL"),
+                  trade.ResultRetcode(), trade.ResultRetcodeDescription());
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Main tick handler                                                |
+//+------------------------------------------------------------------+
+void OnTick()
+  {
+   // Only act once per completed bar
+   if(!IsNewBar())
+      return;
+
+   // Runtime guards (in case of chart symbol/timeframe change)
+   if(InpRestrictSymbol && !IsGoldSymbol(_Symbol))
+      return;
+   if(InpRestrictTimeframe && !IsAllowedTimeframe((ENUM_TIMEFRAMES)_Period))
+      return;
+
+   // Respect max simultaneous positions
+   if(CountEaPositions() >= InpMaxPositions)
+      return;
+
+   // Ensure trading is allowed
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED) ||
+      !MQLInfoInteger(MQL_TRADE_ALLOWED)           ||
+      !AccountInfoInteger(ACCOUNT_TRADE_ALLOWED)   ||
+      !SymbolInfoInteger(_Symbol, SYMBOL_TRADE_MODE))
+      return;
+
+   // Spread filter
+   if(!SpreadOK())
+      return;
+
+   // Evaluate pattern
+   int signal = CheckPattern();
+   if(signal == 0)
+      return;
+
+   OpenTrade(signal);
+  }
+//+------------------------------------------------------------------+
