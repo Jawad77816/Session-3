@@ -7,7 +7,7 @@
 //|  grid, trailing, PKT session, news filter, dashboard) PLUS:      |
 //|   - Trend robustness (deadband + confirm-bars + ADX gate)        |
 //|   - Spread filter                                                 |
-//|   - ATR dynamic TP/SL/trailing/grid                               |
+//|   - Fixed TP/SL + tight trailing stop                            |
 //|   - Partial take-profit + runner                                  |
 //|   - Basket stop, daily loss limit, daily profit target, cooldown  |
 //|   - Rejection wick-quality filter + RSI confluence                |
@@ -18,7 +18,7 @@
 //|  *** Grid averages into losers. Even with caps, test on demo. *** |
 //+------------------------------------------------------------------+
 #property copyright "Session-3"
-#property version   "7.10"
+#property version   "7.20"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -82,22 +82,14 @@ input group "=== Spread Filter ==="
 input bool               InpUseSpreadFilter = true;         // Block new trades when spread too wide
 input int                InpMaxSpreadPts    = 50;           // Max spread (points) to allow trading
 
-input group "=== Targets: fixed OR ATR ==="
-input ENUM_TARGET_MODE   InpTargetMode     = MODE_MONEY_USD;// How the FIXED inputs below are read
-input double             InpTakeProfit     = 6.0;           // Fixed take profit (USD or price)
-input double             InpStopLoss       = 6.0;           // Fixed stop loss (USD or price)
-input double             InpTrailStart     = 0.3;           // Fixed favourable move before trailing
-input double             InpTrailDistance  = 0.3;           // Fixed trailing gap
-input double             InpTrailStep      = 0.05;          // Min SL improvement before it moves
+input group "=== Targets & Trailing (fixed) ==="
+input ENUM_TARGET_MODE   InpTargetMode     = MODE_MONEY_USD;// How the TP/SL/trailing inputs are read
+input double             InpTakeProfit     = 6.0;           // Take profit (USD or price)
+input double             InpStopLoss       = 10.0;          // Stop loss  (USD or price)
+input double             InpTrailStart     = 0.5;           // Favourable move before trailing arms
+input double             InpTrailDistance  = 0.2;           // Trailing gap (tight; keep it above the spread)
+input double             InpTrailStep      = 0.01;          // Min SL improvement before it moves (small = tighter)
 input bool               InpLockBreakeven  = true;          // Armed trail never closes in loss
-input bool               InpUseATR         = true;          // Size targets from ATR (overrides the fixed ones)
-input ENUM_TIMEFRAMES    InpATRTF          = PERIOD_M5;     // ATR timeframe
-input int                InpATRPeriod      = 14;            // ATR period
-input double             InpATR_TP         = 1.0;           // Take profit  = this * ATR
-input double             InpATR_SL         = 1.2;           // Stop loss     = this * ATR
-input double             InpATR_TrailStart = 0.5;           // Trail start   = this * ATR
-input double             InpATR_TrailDist  = 0.5;           // Trail gap      = this * ATR
-input double             InpATR_GridStep   = 0.8;           // Grid step      = this * ATR
 
 input group "=== Partial Take-Profit + Runner ==="
 input bool               InpUsePartialTP   = true;          // Partial-TP (CUSTOM mode only; needs lot>=2x min)
@@ -119,7 +111,7 @@ input int                InpMaxTradeMinutes = 120;          // Close a trade old
 
 input group "=== Grid (average into adverse moves) ==="
 input bool               InpEnableGrid      = true;         // Add trades as price moves against the first
-input double             InpGridStepUSD     = 4.0;          // Fixed grid step (used if ATR off)
+input double             InpGridStepUSD     = 4.0;          // Grid step (USD or price)
 input int                InpMaxGridTrades   = 3;            // Max total trades per side per cycle
 input bool               InpGridRespectFilters = false;     // Grid adds also blocked by session/news
 
@@ -155,7 +147,6 @@ input bool               InpDebugLogs       = false;        // Print decisions t
 CTrade    trade;
 int       maHandle = INVALID_HANDLE;
 int       adxHandle = INVALID_HANDLE;
-int       atrHandle = INVALID_HANDLE;
 int       rsiHandle = INVALID_HANDLE;
 double    g_point;
 int       g_digits;
@@ -238,19 +229,12 @@ double MoneyFromDistance(double dist)
    return dist / ts * tv * EffLots();
   }
 
-double CurrentATR()
-  {
-   double a[];
-   if(atrHandle != INVALID_HANDLE && CopyBuffer(atrHandle, 0, 1, 1, a) >= 1) return a[0];
-   return 0.0;
-  }
-
-// --- target distances: ATR if enabled and valid, else the fixed inputs ---
-double TPDist()        { double a=CurrentATR(); return (InpUseATR && a>0)? InpATR_TP*a        : DistanceToPrice(InpTakeProfit); }
-double SLDist()        { double a=CurrentATR(); return (InpUseATR && a>0)? InpATR_SL*a        : DistanceToPrice(InpStopLoss); }
-double TrailStartDist(){ double a=CurrentATR(); return (InpUseATR && a>0)? InpATR_TrailStart*a: DistanceToPrice(InpTrailStart); }
-double TrailGapDist()  { double a=CurrentATR(); return (InpUseATR && a>0)? InpATR_TrailDist*a : DistanceToPrice(InpTrailDistance); }
-double GridStepDist()  { double a=CurrentATR(); return (InpUseATR && a>0)? InpATR_GridStep*a  : DistanceToPrice(InpGridStepUSD); }
+// --- target distances (fixed inputs) ---
+double TPDist()        { return DistanceToPrice(InpTakeProfit); }
+double SLDist()        { return DistanceToPrice(InpStopLoss); }
+double TrailStartDist(){ return DistanceToPrice(InpTrailStart); }
+double TrailGapDist()  { return DistanceToPrice(InpTrailDistance); }
+double GridStepDist()  { return DistanceToPrice(InpGridStepUSD); }
 
 int SpreadPts() { return (int)MathRound((SymbolInfoDouble(_Symbol,SYMBOL_ASK)-SymbolInfoDouble(_Symbol,SYMBOL_BID))/g_point); }
 bool SpreadOK() { return (!InpUseSpreadFilter || SpreadPts() <= InpMaxSpreadPts); }
@@ -322,11 +306,6 @@ int OnInit()
       adxHandle = iADX(_Symbol, InpTrendTF, InpADXPeriod);
       if(adxHandle == INVALID_HANDLE) { Print("Failed ADX handle"); return(INIT_FAILED); }
      }
-   if(InpUseATR)
-     {
-      atrHandle = iATR(_Symbol, InpATRTF, InpATRPeriod);
-      if(atrHandle == INVALID_HANDLE) { Print("Failed ATR handle"); return(INIT_FAILED); }
-     }
    if(InpUseRSI)
      {
       rsiHandle = iRSI(_Symbol, InpSignalTF, InpRSIPeriod, PRICE_CLOSE);
@@ -358,7 +337,6 @@ void OnDeinit(const int reason)
    EventKillTimer();
    if(maHandle  != INVALID_HANDLE) IndicatorRelease(maHandle);
    if(adxHandle != INVALID_HANDLE) IndicatorRelease(adxHandle);
-   if(atrHandle != INVALID_HANDLE) IndicatorRelease(atrHandle);
    if(rsiHandle != INVALID_HANDLE) IndicatorRelease(rsiHandle);
    if(reason == REASON_REMOVE || reason == REASON_CHARTCLOSE)
      {
@@ -939,8 +917,7 @@ void UpdateDashboard()
      }
    if(InpUseRSI) DashLabel(r++, StringFormat("RSI %.1f  (OS %.0f / OB %.0f)", GetRSI(), InpRSIOS, InpRSIOB), cText);
 
-   double atr = CurrentATR();
-   DashLabel(r++, StringFormat("Targets: TP %.2f SL %.2f %s", TPDist(), SLDist(), (InpUseATR && atr>0)?StringFormat("(ATR %.2f)",atr):"(fixed)"), cText);
+   DashLabel(r++, StringFormat("Targets: TP %.2f SL %.2f (fixed)", TPDist(), SLDist()), cText);
    DashLabel(r++, StringFormat("Pivots %s  P %.2f", TFName(InpPivotTF), g_levels[0]), cText);
    int sp = SpreadPts();
    DashLabel(r++, StringFormat("Spread %d pts (max %d)", sp, InpMaxSpreadPts), (InpUseSpreadFilter && sp>InpMaxSpreadPts)?cBad:cText);
