@@ -21,10 +21,11 @@
 //|  XAUUSD only.                                                     |
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal EA"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
 #property description "Three-candle reversal pattern EA for XAUUSD on M1/M5."
-#property description "First/Middle/Third candle body & wick rules with fixed TP/SL."
+#property description "First/Middle/Third candle body & wick rules with fixed TP/SL"
+#property description "and a fixed-USD tight trailing stop (no ATR)."
 
 #include <Trade/Trade.mqh>
 
@@ -45,6 +46,12 @@ input double         InpLotSize        = 0.01;            // Fixed lot size
 input ENUM_TPSL_MODE InpTpSlMode       = TPSL_PRICE_USD;  // How TP/SL values are interpreted
 input double         InpTakeProfit     = 1.0;             // Take Profit (USD)  <-- adjustable
 input double         InpStopLoss       = 1.0;             // Stop Loss  (USD)   <-- adjustable
+
+input group    "=== Trailing Stop (fixed USD, no ATR) ==="
+input bool           InpUseTrailing    = true;            // Enable tight trailing stop
+input double         InpTrailStartUSD  = 0.5;             // Start trailing after this profit (USD)
+input double         InpTrailGapUSD    = 0.1;             // Trail distance behind price (USD, tight)
+input double         InpTrailStepUSD   = 0.0;             // Min SL move before updating (USD, 0=each tick)
 
 input group    "=== Trade Filters ==="
 input bool           InpEnableBuy      = true;            // Allow BUY trades
@@ -379,18 +386,85 @@ void OpenTrade(const int dir)
   }
 
 //+------------------------------------------------------------------+
+//| Trailing-stop manager (fixed USD distances, no ATR)              |
+//|   - activates once a position is InpTrailStartUSD in profit      |
+//|   - then keeps the SL InpTrailGapUSD behind price, tightening    |
+//|     only in the trade's favour (never loosening).                |
+//+------------------------------------------------------------------+
+void ManageTrailing()
+  {
+   if(!InpUseTrailing)
+      return;
+   if(InpTrailGapUSD <= 0.0 || InpTrailStartUSD < 0.0)
+      return;
+
+   // Broker minimum stop distance (SL must sit at least this far from price)
+   long   stopsLevelPts = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   double minDist       = (double)stopsLevelPts * g_symPoint;
+   double step          = MathMax(InpTrailStepUSD, g_symPoint);
+
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(!PositionSelectByTicket(ticket)) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol) continue;
+      if(PositionGetInteger(POSITION_MAGIC) != InpMagicNumber) continue;
+
+      long   type      = PositionGetInteger(POSITION_TYPE);
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double curSL     = PositionGetDouble(POSITION_SL);
+      double curTP     = PositionGetDouble(POSITION_TP);
+
+      if(type == POSITION_TYPE_BUY)
+        {
+         double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+         if((bid - openPrice) < InpTrailStartUSD)     // not enough profit yet
+            continue;
+         double gap   = MathMax(InpTrailGapUSD, minDist + g_symPoint);
+         double newSL = NormalizeDouble(bid - gap, g_symDigits);
+         // Only raise the stop, and only if it is a real improvement.
+         if(newSL < bid && (curSL == 0.0 || newSL >= curSL + step))
+           {
+            if(trade.PositionModify(ticket, newSL, curTP))
+               PrintFormat("Trail BUY #%I64u: SL -> %.*f (bid %.*f)",
+                           ticket, g_symDigits, newSL, g_symDigits, bid);
+           }
+        }
+      else if(type == POSITION_TYPE_SELL)
+        {
+         double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+         if((openPrice - ask) < InpTrailStartUSD)
+            continue;
+         double gap   = MathMax(InpTrailGapUSD, minDist + g_symPoint);
+         double newSL = NormalizeDouble(ask + gap, g_symDigits);
+         // Only lower the stop, and only if it is a real improvement.
+         if(newSL > ask && (curSL == 0.0 || newSL <= curSL - step))
+           {
+            if(trade.PositionModify(ticket, newSL, curTP))
+               PrintFormat("Trail SELL #%I64u: SL -> %.*f (ask %.*f)",
+                           ticket, g_symDigits, newSL, g_symDigits, ask);
+           }
+        }
+     }
+  }
+
+//+------------------------------------------------------------------+
 //| Main tick handler                                                |
 //+------------------------------------------------------------------+
 void OnTick()
   {
-   // Only act once per completed bar
-   if(!IsNewBar())
-      return;
-
    // Runtime guards (in case of chart symbol/timeframe change)
    if(InpRestrictSymbol && !IsGoldSymbol(_Symbol))
       return;
    if(InpRestrictTimeframe && !IsAllowedTimeframe((ENUM_TIMEFRAMES)_Period))
+      return;
+
+   // Trailing stops are managed on EVERY tick (not just on a new bar)
+   ManageTrailing();
+
+   // --- Entry logic below runs only once per completed bar ---
+   if(!IsNewBar())
       return;
 
    // Respect max simultaneous positions

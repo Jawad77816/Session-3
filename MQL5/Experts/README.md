@@ -61,6 +61,25 @@ adjustable (default **$1 / $1**).
   The EA converts the money target into the correct price distance using the
   symbol's tick value and your lot size.
 
+### Trailing Stop (fixed USD, no ATR)
+| Input | Default | Meaning |
+|-------|---------|---------|
+| `InpUseTrailing` | `true` | Enable the tight trailing stop. |
+| `InpTrailStartUSD` | `0.5` | Trailing activates once the trade is this many USD in profit. |
+| `InpTrailGapUSD` | `0.1` | Once active, the SL is kept this far (USD) behind price — smaller = tighter. |
+| `InpTrailStepUSD` | `0.0` | Minimum SL improvement before it moves again (`0` = update every tick). |
+
+**How it works:** the initial `$1` stop stays as protection until price is
+`InpTrailStartUSD` in profit. From then on the SL follows price, staying
+`InpTrailGapUSD` behind, and only ever moves in your favour (never loosens).
+For a buy the stop ratchets **up**; for a sell it ratchets **down**. If the
+requested gap is tighter than your broker's minimum stop distance, it is
+widened to that minimum automatically.
+
+> **Tighter = more sensitive.** A very small `InpTrailGapUSD` (e.g. `0.1`) locks
+> profit fast but is easily clipped by normal M1 noise; `0.2`–`0.3` is a common
+> balance. Adjust to taste.
+
 ### Trade Filters
 | Input | Default | Meaning |
 |-------|---------|---------|
