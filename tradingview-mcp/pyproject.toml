@@ -1,0 +1,21 @@
+[project]
+name = "tradingview-mcp"
+version = "0.1.0"
+description = "Custom MCP connector for TradingView technical-analysis data"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=1.2.0",
+    "tradingview-ta>=3.3.0",
+    "requests>=2.31.0",
+]
+
+[project.scripts]
+tradingview-mcp = "tradingview_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["tradingview_mcp"]
