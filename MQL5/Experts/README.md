@@ -88,11 +88,34 @@ widened to that minimum automatically.
 | `InpMaxPositions` | `1` | Max simultaneous EA positions on this symbol. |
 | `InpMaxSpreadUSD` | `0.0` | Skip entries if spread exceeds this (USD). `0` = off. |
 
+### Trend / Reversal Filter (M5 recommended)
+Stops the pattern from firing mid-trend, so **sells only trigger at the top of
+an up-move and buys only at the bottom of a down-move**.
+
+| Input | Default | Meaning |
+|-------|---------|---------|
+| `InpUseTrendFilter` | `true` | Master switch for the reversal filter. |
+| `InpSwingLookback` | `12` | The middle candle must be the highest high (sell) / lowest low (buy) of this many bars — i.e. a genuine local top/bottom. `0` = skip. |
+| `InpMAPeriod` | `50` | Trend MA. Sell requires the MA **rising** into the pattern (up-trend); buy requires it **falling** (down-trend). `0` = skip. |
+| `InpMAMethod` | `EMA` | MA method (EMA/SMA/…). |
+| `InpMASlopeBars` | `5` | How many bars back the MA slope is measured over. |
+
+**How it decides a reversal:** a signal is only taken when **both** conditions
+hold (each can be turned off individually):
+1. **Local extreme** — the pattern's middle candle is the swing high/low of the
+   last `InpSwingLookback` bars, so the signal sits at a real top/bottom.
+2. **Opposite prior trend** — the MA is sloping the other way, confirming the
+   move being reversed (up-trend before a sell, down-trend before a buy).
+
+Filtered-out patterns are logged as *"… found but filtered out"* so you can see
+what was skipped. Loosen by lowering `InpSwingLookback`, or disable a check by
+setting it to `0`. **M5 is more reliable for this strategy than M1.**
+
 ### Instrument / Timeframe Guards
 | Input | Default | Meaning |
 |-------|---------|---------|
 | `InpRestrictSymbol` | `true` | Refuse to run on non-gold symbols. |
-| `InpRestrictTimeframe` | `true` | Refuse to run on anything but M1/M5. |
+| `InpRestrictTimeframe` | `true` | Refuse to run on anything but M1/M5. **M5 recommended.** |
 
 ### Execution
 | Input | Default | Meaning |

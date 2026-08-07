@@ -23,7 +23,7 @@
 //|  XAUUSD.                                                          |
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal Signal"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
 #property description "Three-candle reversal pattern indicator for XAUUSD on M1/M5."
 #property description "Draws arrows and plays a notification sound on each signal."
@@ -59,6 +59,13 @@ input bool     InpEnableAlert = true;          // Popup alert
 input bool     InpEnablePush  = false;         // Push notification to phone
 input bool     InpEnableEmail = false;         // Email alert
 
+input group    "=== Trend / Reversal Filter (M5 recommended) ==="
+input bool           InpUseTrendFilter = true;      // Only show reversals (skip mid-trend signals)
+input int            InpSwingLookback  = 12;        // Local top/bottom lookback in bars (0=off)
+input int            InpMAPeriod       = 50;        // Trend MA period (0=off)
+input ENUM_MA_METHOD InpMAMethod       = MODE_EMA;  // Trend MA method
+input int            InpMASlopeBars    = 5;         // Bars used to measure MA slope
+
 input group    "=== Instrument / Timeframe Guards ==="
 input bool     InpRestrictSymbol    = true;    // Only run on XAUUSD-type symbol
 input bool     InpRestrictTimeframe = true;    // Only run on M1 / M5
@@ -72,6 +79,8 @@ int      g_digits       = 2;
 bool     g_active       = true;    // false if symbol/timeframe guard fails
 bool     g_histInit     = false;   // suppress alerts for pre-existing history
 datetime g_lastAlertBar = 0;       // time of the last evaluated closed bar
+int      g_maHandle     = INVALID_HANDLE;  // trend MA indicator handle
+double   g_maArr[];                // MA values aligned to the price series
 
 //+------------------------------------------------------------------+
 //| Helpers                                                          |
@@ -156,6 +165,15 @@ int OnInit()
    else
       Comment("");
 
+   // --- Trend MA handle ---
+   ArraySetAsSeries(g_maArr, false);
+   if(InpUseTrendFilter && InpMAPeriod > 0)
+     {
+      g_maHandle = iMA(_Symbol, _Period, InpMAPeriod, 0, InpMAMethod, PRICE_CLOSE);
+      if(g_maHandle == INVALID_HANDLE)
+         Print("WARNING: failed to create MA handle - MA trend filter disabled.");
+     }
+
    return(INIT_SUCCEEDED);
   }
 
@@ -164,7 +182,61 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
   {
+   if(g_maHandle != INVALID_HANDLE)
+      IndicatorRelease(g_maHandle);
    Comment("");
+  }
+
+//+------------------------------------------------------------------+
+//| Trend / reversal context filter (array / non-series indexing)    |
+//|   isBuy=true  -> requires prior DOWN trend + local bottom        |
+//|   isBuy=false -> requires prior UP  trend + local top            |
+//|   Pattern bars: first=i-2, middle=i-1, third(signal)=i           |
+//+------------------------------------------------------------------+
+bool TrendFilterOK(const bool isBuy, const int i, const int rates_total,
+                   const double &high[], const double &low[], const bool maReady)
+  {
+   if(!InpUseTrendFilter)
+      return(true);
+
+   // --- Local swing extreme: the middle candle must be the top/bottom ---
+   if(InpSwingLookback > 0)
+     {
+      // Window = the InpSwingLookback bars ending at the signal bar i.
+      int wStart = i - InpSwingLookback + 1;
+      if(wStart < 0) wStart = 0;
+      int extIdx = i - 1;                       // middle candle
+      if(isBuy)
+        {
+         double m = low[extIdx];
+         for(int k = wStart; k <= i; k++)
+            if(low[k] < m) return(false);       // a lower low exists -> not the bottom
+        }
+      else
+        {
+         double m = high[extIdx];
+         for(int k = wStart; k <= i; k++)
+            if(high[k] > m) return(false);       // a higher high exists -> not the top
+        }
+     }
+
+   // --- MA slope: prior trend must be OPPOSITE to the signal ---
+   if(InpMAPeriod > 0 && maReady)
+     {
+      int older = i - InpMASlopeBars;
+      if(older >= 0)
+        {
+         double maRecent = g_maArr[i];
+         double maOld    = g_maArr[older];
+         if(maRecent != EMPTY_VALUE && maOld != EMPTY_VALUE && maRecent != 0.0 && maOld != 0.0)
+           {
+            if(!isBuy && !(maRecent > maOld)) return(false); // sell needs rising MA
+            if(isBuy  && !(maRecent < maOld)) return(false); // buy  needs falling MA
+           }
+        }
+     }
+
+   return(true);
   }
 
 //+------------------------------------------------------------------+
@@ -189,6 +261,14 @@ int OnCalculate(const int        rates_total,
 
    double gap = InpArrowGapUSD;
    if(gap < 0.0) gap = 0.0;
+
+   // Refresh MA values aligned to the price series (non-series indexing).
+   bool maReady = false;
+   if(InpUseTrendFilter && InpMAPeriod > 0 && g_maHandle != INVALID_HANDLE)
+     {
+      if(CopyBuffer(g_maHandle, 0, 0, rates_total, g_maArr) == rates_total)
+         maReady = true;
+     }
 
    // Determine where to (re)start computing.
    int start;
@@ -222,7 +302,8 @@ int OnCalculate(const int        rates_total,
          bool colorsOK        = IsBear(o1, c1) && IsBull(o2, c2) && IsBull(o3, c3);
          bool middleLowLowest = (l2 < l1) && (l2 < l3);
          bool bodyEngulfHigh  = (c3 > h1);   // green body top = close
-         if(colorsOK && middleLowLowest && bodyEngulfHigh)
+         if(colorsOK && middleLowLowest && bodyEngulfHigh &&
+            TrendFilterOK(true, i, rates_total, high, low, maReady))
            {
             BuyBuffer[i] = l3 - gap;
             continue;
@@ -235,7 +316,8 @@ int OnCalculate(const int        rates_total,
          bool colorsOK          = IsBull(o1, c1) && IsBear(o2, c2) && IsBear(o3, c3);
          bool middleHighHighest = (h2 > h1) && (h2 > h3);
          bool bodyEngulfLow     = (c3 < l1);  // red body bottom = close
-         if(colorsOK && middleHighHighest && bodyEngulfLow)
+         if(colorsOK && middleHighHighest && bodyEngulfLow &&
+            TrendFilterOK(false, i, rates_total, high, low, maReady))
            {
             SellBuffer[i] = h3 + gap;
            }

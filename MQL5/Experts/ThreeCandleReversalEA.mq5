@@ -21,7 +21,7 @@
 //|  XAUUSD only.                                                     |
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal EA"
-#property version   "1.10"
+#property version   "1.20"
 #property strict
 #property description "Three-candle reversal pattern EA for XAUUSD on M1/M5."
 #property description "First/Middle/Third candle body & wick rules with fixed TP/SL"
@@ -59,6 +59,13 @@ input bool           InpEnableSell     = true;            // Allow SELL trades
 input int            InpMaxPositions   = 1;               // Max simultaneous EA positions
 input double         InpMaxSpreadUSD   = 0.0;             // Max allowed spread in USD (0 = off)
 
+input group    "=== Trend / Reversal Filter (M5 recommended) ==="
+input bool           InpUseTrendFilter = true;            // Only take reversals (skip mid-trend signals)
+input int            InpSwingLookback  = 12;              // Local top/bottom lookback in bars (0=off)
+input int            InpMAPeriod       = 50;              // Trend MA period (0=off)
+input ENUM_MA_METHOD InpMAMethod       = MODE_EMA;        // Trend MA method
+input int            InpMASlopeBars    = 5;               // Bars used to measure MA slope
+
 input group    "=== Instrument / Timeframe Guards ==="
 input bool           InpRestrictSymbol    = true;         // Only run on XAUUSD-type symbol
 input bool           InpRestrictTimeframe = true;         // Only run on M1 / M5
@@ -77,6 +84,7 @@ int            g_symDigits   = 2;
 double         g_symPoint    = 0.01;
 double         g_tickSize    = 0.01;
 double         g_tickValue   = 1.0;
+int            g_maHandle    = INVALID_HANDLE;   // trend MA indicator handle
 
 //+------------------------------------------------------------------+
 //| Helper: is this a gold / XAUUSD-style symbol                     |
@@ -142,6 +150,14 @@ int OnInit()
    g_tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
    if(g_tickSize <= 0.0) g_tickSize = g_symPoint;
 
+   // --- Trend MA handle -----------------------------------------------
+   if(InpUseTrendFilter && InpMAPeriod > 0)
+     {
+      g_maHandle = iMA(_Symbol, _Period, InpMAPeriod, 0, InpMAMethod, PRICE_CLOSE);
+      if(g_maHandle == INVALID_HANDLE)
+         Print("WARNING: failed to create MA handle - MA trend filter disabled.");
+     }
+
    // --- Configure trade object ----------------------------------------
    trade.SetExpertMagicNumber(InpMagicNumber);
    trade.SetDeviationInPoints(InpDeviationPts);
@@ -164,6 +180,8 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
   {
+   if(g_maHandle != INVALID_HANDLE)
+      IndicatorRelease(g_maHandle);
    PrintFormat("ThreeCandleReversalEA stopped. Reason=%d", reason);
   }
 
@@ -266,6 +284,64 @@ bool IsBull(const double o, const double c) { return(c > o); }   // green
 bool IsBear(const double o, const double c) { return(c < o); }   // red
 
 //+------------------------------------------------------------------+
+//| Read the trend MA value at a given bar shift                     |
+//+------------------------------------------------------------------+
+double MaValue(const int shift)
+  {
+   if(g_maHandle == INVALID_HANDLE)
+      return(EMPTY_VALUE);
+   double buf[];
+   if(CopyBuffer(g_maHandle, 0, shift, 1, buf) < 1)
+      return(EMPTY_VALUE);
+   return(buf[0]);
+  }
+
+//+------------------------------------------------------------------+
+//| Trend / reversal context filter                                  |
+//|   dir = +1 (buy)  requires a prior DOWN trend + local bottom     |
+//|   dir = -1 (sell) requires a prior UP  trend + local top         |
+//|   Pattern bars: third=1, middle=2, first=3                       |
+//+------------------------------------------------------------------+
+bool TrendFilterOK(const int dir)
+  {
+   if(!InpUseTrendFilter)
+      return(true);
+
+   // --- Local swing extreme: the middle candle must be the top/bottom ---
+   if(InpSwingLookback > 0)
+     {
+      if(dir < 0) // SELL -> middle high must be the highest of the window
+        {
+         int hh = iHighest(_Symbol, _Period, MODE_HIGH, InpSwingLookback, 1);
+         if(hh != 2)
+            return(false);
+        }
+      else        // BUY -> middle low must be the lowest of the window
+        {
+         int ll = iLowest(_Symbol, _Period, MODE_LOW, InpSwingLookback, 1);
+         if(ll != 2)
+            return(false);
+        }
+     }
+
+   // --- MA slope: prior trend must be OPPOSITE to the signal ---
+   if(InpMAPeriod > 0 && g_maHandle != INVALID_HANDLE)
+     {
+      double maRecent = MaValue(1);
+      double maOld    = MaValue(1 + InpMASlopeBars);
+      if(maRecent != EMPTY_VALUE && maOld != EMPTY_VALUE)
+        {
+         if(dir < 0 && !(maRecent > maOld))   // sell needs a rising MA (up-trend into the top)
+            return(false);
+         if(dir > 0 && !(maRecent < maOld))   // buy needs a falling MA (down-trend into the bottom)
+            return(false);
+        }
+     }
+
+   return(true);
+  }
+
+//+------------------------------------------------------------------+
 //| Evaluate the three-candle pattern on closed bars 1,2,3           |
 //|   returns:  1 = BUY signal, -1 = SELL signal, 0 = none           |
 //+------------------------------------------------------------------+
@@ -308,9 +384,14 @@ int CheckPattern()
       bool bodyEngulfHigh   = (c3 > h1);  // green body top = close
       if(colorsOK && middleLowLowest && bodyEngulfHigh)
         {
-         PrintFormat("BUY pattern: first[red] o=%.*f c=%.*f h=%.*f | mid[green] l=%.*f | third[green] close=%.*f > firstHigh=%.*f",
-                     g_symDigits,o1,g_symDigits,c1,g_symDigits,h1,g_symDigits,l2,g_symDigits,c3,g_symDigits,h1);
-         return(1);
+         if(TrendFilterOK(1))
+           {
+            PrintFormat("BUY pattern: first[red] o=%.*f c=%.*f h=%.*f | mid[green] l=%.*f | third[green] close=%.*f > firstHigh=%.*f",
+                        g_symDigits,o1,g_symDigits,c1,g_symDigits,h1,g_symDigits,l2,g_symDigits,c3,g_symDigits,h1);
+            return(1);
+           }
+         else
+            Print("BUY pattern found but filtered out (not a bottom of a down-trend).");
         }
      }
 
@@ -327,9 +408,14 @@ int CheckPattern()
       bool bodyEngulfLow      = (c3 < l1);  // red body bottom = close
       if(colorsOK && middleHighHighest && bodyEngulfLow)
         {
-         PrintFormat("SELL pattern: first[green] o=%.*f c=%.*f l=%.*f | mid[red] h=%.*f | third[red] close=%.*f < firstLow=%.*f",
-                     g_symDigits,o1,g_symDigits,c1,g_symDigits,l1,g_symDigits,h2,g_symDigits,c3,g_symDigits,l1);
-         return(-1);
+         if(TrendFilterOK(-1))
+           {
+            PrintFormat("SELL pattern: first[green] o=%.*f c=%.*f l=%.*f | mid[red] h=%.*f | third[red] close=%.*f < firstLow=%.*f",
+                        g_symDigits,o1,g_symDigits,c1,g_symDigits,l1,g_symDigits,h2,g_symDigits,c3,g_symDigits,l1);
+            return(-1);
+           }
+         else
+            Print("SELL pattern found but filtered out (not a top of an up-trend).");
         }
      }
 
