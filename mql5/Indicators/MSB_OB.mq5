@@ -65,6 +65,9 @@ datetime g_brokenHighTime = 0;  // last swing-high time already broken
 datetime g_brokenLowTime  = 0;  // last swing-low  time already broken
 int      g_setupCount = 0;
 
+//--- Version marker so you can confirm the compiled build on the chart
+const string MSBOB_VERSION = "MSB-OB v1.3";
+
 //+------------------------------------------------------------------+
 int OnInit()
   {
@@ -83,12 +86,15 @@ int OnInit()
 
    IndicatorSetString(INDICATOR_SHORTNAME, "MSB-OB");
    IndicatorSetInteger(INDICATOR_DIGITS, _Digits);
+   PrintFormat("%s loaded on %s %s (FibFactor=%.3f, ZigZag=%d)",
+               MSBOB_VERSION, _Symbol, EnumToString(_Period), InpFibFactor, InpZigZagLength);
    return(INIT_SUCCEEDED);
   }
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
   {
    ObjectsDeleteAll(0, OBJ_PREFIX);
+   Comment("");
   }
 //+------------------------------------------------------------------+
 //| Is bar p a pivot high (highest high over +/- L bars)?            |
@@ -209,6 +215,18 @@ int OnCalculate(const int rates_total,
          g_brokenLowTime = g_lastPLtime;
         }
      }
+
+   // On-chart status label: version + how many MSB breaks / OB zones exist.
+   int nMSB = 0, nOB = 0, tot = ObjectsTotal(0);
+   for(int o = 0; o < tot; o++)
+     {
+      string nm = ObjectName(0, o);
+      if(StringFind(nm, OBJ_PREFIX + "MSB_") == 0) nMSB++;
+      if(StringFind(nm, OBJ_PREFIX + "OB_")  == 0) nOB++;
+     }
+   Comment(MSBOB_VERSION, "\nMSB breaks drawn: ", nMSB,
+           "\nOrder blocks drawn: ", nOB,
+           "\n(if this text is missing, MT5 is running an old compiled copy)");
 
    ChartRedraw(0);   // force the freshly-created objects to render
    return(rates_total);
