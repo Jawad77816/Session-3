@@ -111,6 +111,49 @@ Filtered-out patterns are logged as *"… found but filtered out"* so you can se
 what was skipped. Loosen by lowering `InpSwingLookback`, or disable a check by
 setting it to `0`. **M5 is more reliable for this strategy than M1.**
 
+### Candle Shape Filter
+Requires the **middle candle to be the reversal candle** and the outer candles
+to be real-bodied:
+
+- **Buy** — middle candle must be a **hammer** (long lower wick, small body,
+  tiny upper wick).
+- **Sell** — middle candle must be a **shooting star** (long upper wick, small
+  body, tiny lower wick).
+- **First and third candles** must be **solid** (body-dominant) — so they are
+  **not** doji, hammer, or shooting-star candles.
+
+| Input | Default | Meaning |
+|-------|---------|---------|
+| `InpUseShapeFilter` | `true` | Master switch for the shape rules. |
+| `InpHammerWickPct` | `0.5` | The dominant wick must be ≥ this fraction of the candle's range. |
+| `InpHammerHeadPct` | `0.15` | The opposite wick must be ≤ this fraction of the range. |
+| `InpHammerBodyPct` | `0.4` | The hammer/star body must be ≤ this fraction of the range. |
+| `InpSolidBodyPct` | `0.5` | 1st/3rd candle body must be ≥ this fraction of the range (excludes doji/hammer/star). |
+
+Loosen by lowering `InpHammerWickPct` / `InpSolidBodyPct`; tighten by raising
+them. Set `InpUseShapeFilter=false` to disable.
+
+### Notifications
+The EA plays a sound (and optionally alerts) when it **opens** a trade.
+
+| Input | Default | Meaning |
+|-------|---------|---------|
+| `InpEnableSound` | `true` | Play a sound on entry. |
+| `InpBuySound` / `InpSellSound` | `alert.wav` / `alert2.wav` | Sound files. |
+| `InpEnableAlert` | `false` | Popup alert on entry. |
+| `InpEnablePush` | `false` | Push notification to phone on entry. |
+
+### Dashboard
+An on-chart panel shows live status: pair/timeframe, **trend** (up/down/flat
+from the MA), trend-filter and shape-filter state, the **last signal** and its
+time, open positions, trailing state, sound state, and TP/SL.
+
+| Input | Default | Meaning |
+|-------|---------|---------|
+| `InpShowDashboard` | `true` | Show/hide the panel. |
+| `InpDashX` / `InpDashY` | `12` / `20` | Panel position (pixels from top-left). |
+| `InpDashBgColor` | `Black` | Panel background colour. |
+
 ### Instrument / Timeframe Guards
 | Input | Default | Meaning |
 |-------|---------|---------|

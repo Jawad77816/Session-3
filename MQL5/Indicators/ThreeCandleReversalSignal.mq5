@@ -23,7 +23,7 @@
 //|  XAUUSD.                                                          |
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal Signal"
-#property version   "1.10"
+#property version   "1.20"
 #property strict
 #property description "Three-candle reversal pattern indicator for XAUUSD on M1/M5."
 #property description "Draws arrows and plays a notification sound on each signal."
@@ -66,6 +66,19 @@ input int            InpMAPeriod       = 50;        // Trend MA period (0=off)
 input ENUM_MA_METHOD InpMAMethod       = MODE_EMA;  // Trend MA method
 input int            InpMASlopeBars    = 5;         // Bars used to measure MA slope
 
+input group    "=== Candle Shape Filter ==="
+input bool           InpUseShapeFilter = true;      // Require hammer/star middle + solid 1st/3rd
+input double         InpHammerWickPct  = 0.5;       // Dominant wick >= this fraction of range
+input double         InpHammerHeadPct  = 0.15;      // Opposite wick <= this fraction of range
+input double         InpHammerBodyPct  = 0.4;       // Hammer/star body <= this fraction of range
+input double         InpSolidBodyPct   = 0.5;       // 1st/3rd body >= this fraction (not doji/hammer)
+
+input group    "=== Dashboard ==="
+input bool     InpShowDashboard = true;        // Show on-chart status dashboard
+input int      InpDashX         = 12;          // Dashboard X offset (px)
+input int      InpDashY         = 20;          // Dashboard Y offset (px)
+input color    InpDashBgColor   = clrBlack;    // Dashboard background colour
+
 input group    "=== Instrument / Timeframe Guards ==="
 input bool     InpRestrictSymbol    = true;    // Only run on XAUUSD-type symbol
 input bool     InpRestrictTimeframe = true;    // Only run on M1 / M5
@@ -81,6 +94,10 @@ bool     g_histInit     = false;   // suppress alerts for pre-existing history
 datetime g_lastAlertBar = 0;       // time of the last evaluated closed bar
 int      g_maHandle     = INVALID_HANDLE;  // trend MA indicator handle
 double   g_maArr[];                // MA values aligned to the price series
+bool     g_maReady      = false;   // MA buffer valid this calculation
+string   g_lastSignal   = "None";  // last signal (dashboard)
+datetime g_lastSignalTm = 0;       // time of last signal
+#define  DASH_PREFIX      "TCRIND_DASH_"
 
 //+------------------------------------------------------------------+
 //| Helpers                                                          |
@@ -108,6 +125,44 @@ string TfToStr(const ENUM_TIMEFRAMES tf)
 
 bool IsBull(const double o, const double c) { return(c > o); }  // green
 bool IsBear(const double o, const double c) { return(c < o); }  // red
+
+//+------------------------------------------------------------------+
+//| Candle-shape helpers                                             |
+//|   Hammer        : long LOWER wick, small body, tiny upper wick   |
+//|   Shooting star : long UPPER wick, small body, tiny lower wick   |
+//|   Solid         : body-dominant candle (not doji/hammer/star)    |
+//+------------------------------------------------------------------+
+bool IsHammerShape(const double o, const double h, const double l, const double c)
+  {
+   double range = h - l;
+   if(range <= 0.0) return(false);
+   double body = MathAbs(c - o);
+   double uw   = h - MathMax(o, c);
+   double lw   = MathMin(o, c) - l;
+   return(lw >= InpHammerWickPct * range &&
+          uw <= InpHammerHeadPct * range &&
+          body <= InpHammerBodyPct * range);
+  }
+
+bool IsStarShape(const double o, const double h, const double l, const double c)
+  {
+   double range = h - l;
+   if(range <= 0.0) return(false);
+   double body = MathAbs(c - o);
+   double uw   = h - MathMax(o, c);
+   double lw   = MathMin(o, c) - l;
+   return(uw >= InpHammerWickPct * range &&
+          lw <= InpHammerHeadPct * range &&
+          body <= InpHammerBodyPct * range);
+  }
+
+bool IsSolidCandle(const double o, const double h, const double l, const double c)
+  {
+   double range = h - l;
+   if(range <= 0.0) return(false);
+   double body = MathAbs(c - o);
+   return(body >= InpSolidBodyPct * range);
+  }
 
 //+------------------------------------------------------------------+
 //| Fire the configured notifications                                |
@@ -184,7 +239,112 @@ void OnDeinit(const int reason)
   {
    if(g_maHandle != INVALID_HANDLE)
       IndicatorRelease(g_maHandle);
+   ObjectsDeleteAll(0, DASH_PREFIX);
    Comment("");
+   ChartRedraw(0);
+  }
+
+//+------------------------------------------------------------------+
+//| Trend label from the MA slope (for the dashboard)                |
+//+------------------------------------------------------------------+
+string IndTrendText(const int rates_total)
+  {
+   if(!(InpMAPeriod > 0) || !g_maReady)
+      return("n/a");
+   int i     = rates_total - 2;
+   int older = i - InpMASlopeBars;
+   if(i < 0 || older < 0)
+      return("n/a");
+   double r = g_maArr[i];
+   double o = g_maArr[older];
+   if(r == 0.0 || o == 0.0)
+      return("n/a");
+   if(r > o) return("UP");
+   if(r < o) return("DOWN");
+   return("FLAT");
+  }
+
+//+------------------------------------------------------------------+
+//| Dashboard: background panel + text label helpers                 |
+//+------------------------------------------------------------------+
+void DashPanel(const string key, const int x, const int y, const int w, const int h, const color bg)
+  {
+   string name = DASH_PREFIX + key;
+   if(ObjectFind(0, name) < 0)
+     {
+      ObjectCreate(0, name, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clrDimGray);
+      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+      ObjectSetInteger(0, name, OBJPROP_BACK, false);
+     }
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, w);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, h);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
+  }
+
+void DashLabel(const string key, const string text, const int x, const int y, const color clr, const int fs)
+  {
+   string name = DASH_PREFIX + key;
+   if(ObjectFind(0, name) < 0)
+     {
+      ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+      ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetString (0, name, OBJPROP_FONT, "Consolas");
+      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+      ObjectSetInteger(0, name, OBJPROP_BACK, false);
+     }
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fs);
+   ObjectSetString (0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+  }
+
+//+------------------------------------------------------------------+
+//| Draw / refresh the on-chart dashboard                            |
+//+------------------------------------------------------------------+
+void DrawDashboard(const int rates_total)
+  {
+   if(!InpShowDashboard)
+      return;
+
+   int x  = InpDashX;
+   int y  = InpDashY;
+   int lh = 16;
+   int n  = 0;
+
+   DashPanel("BG", x - 6, y - 6, 250, 9 * lh + 14, InpDashBgColor);
+
+   DashLabel("l0", "3-Candle Reversal Signal", x, y + (n++) * lh, clrGold, 10);
+   DashLabel("l1", "Pair/TF : " + _Symbol + " " + TfToStr((ENUM_TIMEFRAMES)_Period),
+             x, y + (n++) * lh, clrWhite, 9);
+
+   string trend = IndTrendText(rates_total);
+   color  tcol  = (trend == "UP" ? clrLime : (trend == "DOWN" ? clrTomato : clrSilver));
+   DashLabel("l2", "Trend   : " + trend, x, y + (n++) * lh, tcol, 9);
+
+   DashLabel("l3", "TrendFlt: " + (InpUseTrendFilter ? "ON" : "OFF"), x, y + (n++) * lh, clrWhite, 9);
+   DashLabel("l4", "ShapeFlt: " + (InpUseShapeFilter ? "ON" : "OFF"), x, y + (n++) * lh, clrWhite, 9);
+
+   color  scol  = (g_lastSignal == "BUY" ? clrLime : (g_lastSignal == "SELL" ? clrTomato : clrSilver));
+   string sigtm = (g_lastSignalTm > 0 ? TimeToString(g_lastSignalTm, TIME_MINUTES) : "-");
+   DashLabel("l5", "Signal  : " + g_lastSignal + " " + sigtm, x, y + (n++) * lh, scol, 9);
+
+   bool soundOn = InpEnableSound;
+   DashLabel("l6", "Sound   : " + (soundOn ? "ON" : "OFF"),
+             x, y + (n++) * lh, (soundOn ? clrLime : clrSilver), 9);
+   DashLabel("l7", "Alerts  : " + (InpEnableAlert ? "ON" : "OFF"),
+             x, y + (n++) * lh, clrWhite, 9);
+   DashLabel("l8", "Buys/Sells: " + (InpEnableBuy ? "Y" : "N") + "/" + (InpEnableSell ? "Y" : "N"),
+             x, y + (n++) * lh, clrWhite, 9);
+
+   ChartRedraw(0);
   }
 
 //+------------------------------------------------------------------+
@@ -269,6 +429,7 @@ int OnCalculate(const int        rates_total,
       if(CopyBuffer(g_maHandle, 0, 0, rates_total, g_maArr) == rates_total)
          maReady = true;
      }
+   g_maReady = maReady;
 
    // Determine where to (re)start computing.
    int start;
@@ -302,7 +463,12 @@ int OnCalculate(const int        rates_total,
          bool colorsOK        = IsBear(o1, c1) && IsBull(o2, c2) && IsBull(o3, c3);
          bool middleLowLowest = (l2 < l1) && (l2 < l3);
          bool bodyEngulfHigh  = (c3 > h1);   // green body top = close
-         if(colorsOK && middleLowLowest && bodyEngulfHigh &&
+         bool shapeOK = true;
+         if(InpUseShapeFilter)
+            shapeOK = IsHammerShape(o2, h2, l2, c2)   // middle = hammer
+                   && IsSolidCandle(o1, h1, l1, c1)    // first  = solid
+                   && IsSolidCandle(o3, h3, l3, c3);   // third  = solid
+         if(colorsOK && middleLowLowest && bodyEngulfHigh && shapeOK &&
             TrendFilterOK(true, i, rates_total, high, low, maReady))
            {
             BuyBuffer[i] = l3 - gap;
@@ -316,7 +482,12 @@ int OnCalculate(const int        rates_total,
          bool colorsOK          = IsBull(o1, c1) && IsBear(o2, c2) && IsBear(o3, c3);
          bool middleHighHighest = (h2 > h1) && (h2 > h3);
          bool bodyEngulfLow     = (c3 < l1);  // red body bottom = close
-         if(colorsOK && middleHighHighest && bodyEngulfLow &&
+         bool shapeOK = true;
+         if(InpUseShapeFilter)
+            shapeOK = IsStarShape(o2, h2, l2, c2)     // middle = shooting star
+                   && IsSolidCandle(o1, h1, l1, c1)    // first  = solid
+                   && IsSolidCandle(o3, h3, l3, c3);   // third  = solid
+         if(colorsOK && middleHighHighest && bodyEngulfLow && shapeOK &&
             TrendFilterOK(false, i, rates_total, high, low, maReady))
            {
             SellBuffer[i] = h3 + gap;
@@ -331,19 +502,34 @@ int OnCalculate(const int        rates_total,
       datetime bt = time[sig];
       if(!g_histInit)
         {
-         // First run after (re)load: mark history as seen, don't alert it.
+         // First run after (re)load: mark history as seen, don't alert it,
+         // but populate the dashboard with the most recent past signal.
+         int scanStart = MathMax(2, sig - 1000);
+         for(int j = sig; j >= scanStart; j--)
+           {
+            if(BuyBuffer[j] != EMPTY_VALUE)  { g_lastSignal = "BUY";  g_lastSignalTm = time[j]; break; }
+            if(SellBuffer[j] != EMPTY_VALUE) { g_lastSignal = "SELL"; g_lastSignalTm = time[j]; break; }
+           }
          g_lastAlertBar = bt;
          g_histInit     = true;
         }
       else if(bt != g_lastAlertBar)
         {
          if(BuyBuffer[sig] != EMPTY_VALUE)
+           {
             FireAlerts(true,  close[sig], bt);
+            g_lastSignal = "BUY";  g_lastSignalTm = bt;
+           }
          else if(SellBuffer[sig] != EMPTY_VALUE)
+           {
             FireAlerts(false, close[sig], bt);
+            g_lastSignal = "SELL"; g_lastSignalTm = bt;
+           }
          g_lastAlertBar = bt;   // advance so we evaluate each closed bar once
         }
      }
+
+   DrawDashboard(rates_total);
 
    return(rates_total);
   }
