@@ -118,6 +118,16 @@ bool IsPivotLow(const double &low[], int p, int L, int rates_total)
    return(true);
   }
 //+------------------------------------------------------------------+
+//| Average candle range over the last n bars ending at i            |
+//+------------------------------------------------------------------+
+double AvgRange(const double &high[], const double &low[], int i, int n)
+  {
+   double sum = 0.0; int cnt = 0;
+   for(int k = i; k > i - n && k >= 0; k--) { sum += (high[k] - low[k]); cnt++; }
+   if(cnt == 0) return(0.0);
+   return(sum / cnt);
+  }
+//+------------------------------------------------------------------+
 int OnCalculate(const int rates_total,
                 const int prev_calculated,
                 const datetime &time[],
@@ -173,17 +183,17 @@ int OnCalculate(const int rates_total,
            }
         }
 
-      // Impulse-leg range used as a breakout-confirmation buffer.
-      double legRange = 0.0;
-      if(g_lastPHprice > 0 && g_lastPLprice > 0)
-         legRange = MathAbs(g_lastPHprice - g_lastPLprice);
-      double buffer = InpFibFactor * legRange;
+      // Breakout-confirmation buffer = FibFactor x recent average candle
+      // range (ATR-like). This scales sensibly across instruments so the
+      // break must clear the swing by a fraction of a typical candle.
+      double avgRange = AvgRange(high, low, i, 14);
+      double buffer   = InpFibFactor * avgRange;
 
       //--- Bullish MSB: close above the last confirmed swing high ---
       if(g_lastPHidx >= 0 && g_lastPHtime != g_brokenHighTime &&
          close[i] > g_lastPHprice + buffer)
         {
-         BullArrow[i] = low[i] - 2.0 * _Point * (double)(1 + (int)(legRange/_Point/50.0));
+         BullArrow[i] = low[i] - 0.5 * avgRange;
          DrawMSBLine(true, g_lastPHtime, time[i], g_lastPHprice);
          DrawOrderBlock(true, open, high, low, close, time, g_lastPHidx, i);
          g_brokenHighTime = g_lastPHtime;
@@ -193,7 +203,7 @@ int OnCalculate(const int rates_total,
       if(g_lastPLidx >= 0 && g_lastPLtime != g_brokenLowTime &&
          close[i] < g_lastPLprice - buffer)
         {
-         BearArrow[i] = high[i] + 2.0 * _Point * (double)(1 + (int)(legRange/_Point/50.0));
+         BearArrow[i] = high[i] + 0.5 * avgRange;
          DrawMSBLine(false, g_lastPLtime, time[i], g_lastPLprice);
          DrawOrderBlock(false, open, high, low, close, time, g_lastPLidx, i);
          g_brokenLowTime = g_lastPLtime;

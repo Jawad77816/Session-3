@@ -104,8 +104,13 @@ void OnTick()
      }
 
    double closed = rates[1].close;   // last closed bar
-   double legRange = (phPrice > 0 && plPrice > 0) ? MathAbs(phPrice - plPrice) : 0.0;
-   double buffer   = InpFibFactor * legRange;
+
+   // Breakout-confirmation buffer = FibFactor x recent average candle
+   // range (ATR-like), so it scales sensibly across instruments.
+   double avgRange = 0.0; int arCnt = 0;
+   for(int k = 1; k <= 14 && k < copied; k++) { avgRange += (rates[k].high - rates[k].low); arCnt++; }
+   if(arCnt > 0) avgRange /= arCnt;
+   double buffer = InpFibFactor * avgRange;
 
    //--- Bullish MSB -> arm a BUY LIMIT at the bullish order block ----
    if(phShift > 0 && phTime != g_brokenHighTime && closed > phPrice + buffer)
