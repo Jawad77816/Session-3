@@ -210,6 +210,7 @@ int OnCalculate(const int rates_total,
         }
      }
 
+   ChartRedraw(0);   // force the freshly-created objects to render
    return(rates_total);
   }
 //+------------------------------------------------------------------+
