@@ -1,0 +1,170 @@
+//@version=6
+// ============================================================================
+//  Reversal-After-Trend  —  Risk:Reward strategy
+//  ---------------------------------------------------------------------------
+//  Rebuilt from a price-action video lesson (XAUUSD, 5-minute).
+//
+//  The idea taught in the video:
+//    1. Price makes a strong one-directional run  (a "staircase" of same-colour
+//       candles) -> a down-run of red candles, or an up-run of green candles.
+//    2. The FIRST opposite-colour candle = the "reversal candle" = the signal.
+//         - down-run  then a GREEN candle  -> BUY
+//         - up-run    then a RED   candle  -> SELL
+//    3. Stop-loss goes just beyond the reversal / swing extreme (the red band).
+//    4. Take-profit is a FIXED Risk:Reward away (the video shows 1:2 and 1:3,
+//       drawn as the green box).
+//    5. A volume spike on the reversal candle is shown as confirmation.
+//
+//  IMPORTANT: The exact numbers (how many candles make "a trend", precise stop
+//  placement, whether volume is mandatory) were spoken in the video's audio,
+//  which could not be transcribed in this environment. They are therefore
+//  exposed as INPUTS below — tune them to match what the teacher actually said.
+// ============================================================================
+
+strategy("Reversal After Trend (R:R) — video strategy",
+     overlay              = true,
+     initial_capital      = 10000,
+     default_qty_type     = strategy.percent_of_equity,
+     default_qty_value    = 100,
+     pyramiding           = 0,
+     calc_on_every_tick   = false,
+     process_orders_on_close = false,
+     commission_type      = strategy.commission.percent,
+     commission_value     = 0.0,
+     max_boxes_count      = 500,
+     max_labels_count     = 500)
+
+// ------------------------------------------------------------------ Inputs ---
+gS = "① Signal"
+trendLen  = input.int(5, "Consecutive trend candles before the reversal",
+     minval = 1, maxval = 30, group = gS,
+     tooltip = "How many SAME-colour candles must appear in a row to count as a 'trend' before we look for the reversal candle. The video shows roughly 5-7. This is the #1 thing to confirm from the lesson's audio.")
+colourMode = input.string("Body (close vs open)", "How to define candle colour",
+     options = ["Body (close vs open)", "Close vs previous close"], group = gS)
+
+gF = "② Filters (optional)"
+useVol    = input.bool(false, "Require reversal-candle volume > average", group = gF,
+     tooltip = "The video shows a volume spike on the reversal candle. Turn on to make it a hard condition.")
+volLen    = input.int(20, "Volume average length", minval = 1, group = gF)
+useSess   = input.bool(false, "Trade only inside a time window", group = gF)
+sess      = input.session("0000-2359", "Session (exchange time)", group = gF)
+
+gR = "③ Risk / Reward"
+slMethod  = input.string("Reversal candle", "Stop-loss anchor",
+     options = ["Reversal candle", "Swing of the whole move"], group = gR,
+     tooltip = "'Reversal candle' = just beyond the signal candle's low/high (tight box, like the video). 'Swing of the whole move' = beyond the extreme of the entire run.")
+slBufTk   = input.int(0, "Extra stop buffer (in ticks)", minval = 0, group = gR)
+rr1       = input.float(2.0, "Primary target R:R  (1 : x)", minval = 0.1, step = 0.1, group = gR)
+useTP2    = input.bool(true, "Enable a second target", group = gR)
+rr2       = input.float(3.0, "Second target R:R  (1 : x)", minval = 0.1, step = 0.1, group = gR)
+tp1share  = input.int(50, "% of position closed at the primary target",
+     minval = 1, maxval = 100, group = gR,
+     tooltip = "Scale-out: this fraction is closed at target 1, the rest rides to target 2 (or the stop).")
+
+gD = "④ Direction & Dates"
+allowLong  = input.bool(true,  "Take BUY  setups", group = gD)
+allowShort = input.bool(true,  "Take SELL setups", group = gD)
+oneAtATime = input.bool(true,  "Only one trade at a time (enter only when flat)", group = gD)
+useDates   = input.bool(false, "Limit the back-test date range", group = gD)
+startD     = input.time(timestamp(2024, 1, 1, 0, 0),   "From", group = gD)
+endD       = input.time(timestamp(2026, 12, 31, 23, 59), "To", group = gD)
+
+gV = "⑤ Visuals"
+drawBoxes  = input.bool(true, "Draw SL / TP zones like the video", group = gV)
+boxLen     = input.int(12, "Zone width (bars)", minval = 1, group = gV)
+
+// ------------------------------------------------------- Candle colour / runs
+bull = colourMode == "Body (close vs open)" ? close > open : close > close[1]
+bear = colourMode == "Body (close vs open)" ? close < open : close < close[1]
+
+// running count of consecutive bull / bear candles (includes the current bar)
+var int upRun = 0
+var int dnRun = 0
+upRun := bull ? nz(upRun[1]) + 1 : 0
+dnRun := bear ? nz(dnRun[1]) + 1 : 0
+
+// a completed trend is the run that ended on the PREVIOUS bar
+downTrendDone = nz(dnRun[1]) >= trendLen   // bearish run -> look for green reversal
+upTrendDone   = nz(upRun[1]) >= trendLen   // bullish run -> look for red reversal
+
+// ------------------------------------------------------------------ Filters
+volOk   = not useVol  or volume > ta.sma(volume, volLen)
+inSess  = not useSess or not na(time(timeframe.period, sess))
+inDates = not useDates or (time >= startD and time <= endD)
+flatOk  = not oneAtATime or strategy.position_size == 0
+
+// ------------------------------------------------------------------ Signals
+longSig  = allowLong  and downTrendDone and bull and volOk and inSess and inDates and flatOk
+shortSig = allowShort and upTrendDone   and bear and volOk and inSess and inDates and flatOk
+
+// ------------------------------------------------- Stop / target price levels
+tick = syminfo.mintick
+buf  = slBufTk * tick
+
+// swing extreme over the move + the reversal candle
+swingLo = ta.lowest(low,  trendLen + 1)
+swingHi = ta.highest(high, trendLen + 1)
+
+// entry reference = close of the reversal (signal) candle
+entryRef = close
+
+longSL  = (slMethod == "Reversal candle" ? low  : swingLo) - buf
+shortSL = (slMethod == "Reversal candle" ? high : swingHi) + buf
+
+longRisk  = entryRef - longSL
+shortRisk = shortSL  - entryRef
+
+longTP1  = entryRef + rr1 * longRisk
+longTP2  = entryRef + rr2 * longRisk
+shortTP1 = entryRef - rr1 * shortRisk
+shortTP2 = entryRef - rr2 * shortRisk
+
+// persistent copies so the exit orders survive after the signal bar
+var float pLongSL  = na
+var float pLongT1  = na
+var float pLongT2  = na
+var float pShortSL = na
+var float pShortT1 = na
+var float pShortT2 = na
+
+// ------------------------------------------------------------------ Entries
+if longSig and longRisk > 0
+    pLongSL := longSL
+    pLongT1 := longTP1
+    pLongT2 := longTP2
+    strategy.entry("Long", strategy.long)
+    if drawBoxes
+        box.new(bar_index, longTP2, bar_index + boxLen, entryRef, border_color = color.new(color.green, 40), bgcolor = color.new(color.green, 82))
+        box.new(bar_index, entryRef, bar_index + boxLen, longSL, border_color = color.new(color.red, 40),   bgcolor = color.new(color.red, 82))
+
+if shortSig and shortRisk > 0
+    pShortSL := shortSL
+    pShortT1 := shortTP1
+    pShortT2 := shortTP2
+    strategy.entry("Short", strategy.short)
+    if drawBoxes
+        box.new(bar_index, entryRef, bar_index + boxLen, shortTP2, border_color = color.new(color.green, 40), bgcolor = color.new(color.green, 82))
+        box.new(bar_index, shortSL,  bar_index + boxLen, entryRef, border_color = color.new(color.red, 40),   bgcolor = color.new(color.red, 82))
+
+// ------------------------------------------------------------------ Exits
+if strategy.position_size > 0
+    if useTP2
+        strategy.exit("L-TP1", from_entry = "Long", qty_percent = tp1share, stop = pLongSL, limit = pLongT1)
+        strategy.exit("L-TP2", from_entry = "Long", stop = pLongSL, limit = pLongT2)
+    else
+        strategy.exit("L-Exit", from_entry = "Long", stop = pLongSL, limit = pLongT1)
+
+if strategy.position_size < 0
+    if useTP2
+        strategy.exit("S-TP1", from_entry = "Short", qty_percent = tp1share, stop = pShortSL, limit = pShortT1)
+        strategy.exit("S-TP2", from_entry = "Short", stop = pShortSL, limit = pShortT2)
+    else
+        strategy.exit("S-Exit", from_entry = "Short", stop = pShortSL, limit = pShortT1)
+
+// ------------------------------------------------------------------ Markers
+plotshape(longSig,  title = "Buy signal",  style = shape.triangleup,   location = location.belowbar, color = color.new(color.green, 0), size = size.small)
+plotshape(shortSig, title = "Sell signal", style = shape.triangledown, location = location.abovebar, color = color.new(color.red,   0), size = size.small)
+
+// ------------------------------------------------------------------ Alerts
+alertcondition(longSig,  "Reversal BUY",  "Reversal-after-downtrend BUY signal")
+alertcondition(shortSig, "Reversal SELL", "Reversal-after-uptrend SELL signal")
