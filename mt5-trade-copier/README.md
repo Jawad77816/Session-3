@@ -101,6 +101,7 @@ There are two modes, set by `InpLotMode` on the Slave:
 | `InpSymbolSuffix` | `""` | Broker suffix, e.g. `.a`, `.pro`, `.m`. |
 | `InpSymbolPrefix` | `""` | Broker prefix, e.g. `m` for `mEURUSD`. |
 | `InpCopySLTP` | `true` | Copy stop‑loss / take‑profit. |
+| `InpTpFraction` | `0.5` | Take‑profit distance vs the master. `0.5` = **half** the master's TP target. SL is always copied 1:1. Set `1.0` for the same TP as master. |
 | `InpEnableTrading` | `true` | Set `false` for a dry run (reads, logs, but places no trades). |
 | `InpMaxStaleSec` | `30` | If the demo terminal/EA stops updating the file, the Slave stops **opening** new trades (it still closes copies whose master is gone). |
 | `InpShowPanel` | `true` | Show the on-chart lot control panel (MANUAL mode). |

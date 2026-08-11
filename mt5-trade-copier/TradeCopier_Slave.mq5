@@ -3,7 +3,15 @@
 //|   Free local trade copier - SLAVE side (runs on the REAL acct)    |
 //|                                                                  |
 //|   Reads the snapshot written by the Master EA and mirrors every  |
-//|   position. You control the copy lot in TWO ways:                |
+//|   position.                                                      |
+//|                                                                  |
+//|   STOPS/TARGETS:                                                 |
+//|     * Stop Loss  -> copied 1:1 (same as master).                 |
+//|     * Take Profit-> HALF of the master's target distance by      |
+//|       default (InpTpFraction = 0.5). Anchored to the master's    |
+//|       own entry->TP distance, so it is broker-price independent. |
+//|                                                                  |
+//|   You control the copy lot in TWO ways:                          |
 //|                                                                  |
 //|     * MANUAL FIXED lot  -> every copy uses a lot you set, and    |
 //|       you can change it LIVE with on-chart + / - buttons.        |
@@ -20,7 +28,7 @@
 //|   1:1 mapping will not work correctly.                           |
 //+------------------------------------------------------------------+
 #property copyright "Free Trade Copier"
-#property version   "1.10"
+#property version   "1.20"
 #property strict
 
 #include <Trade/Trade.mqh>
@@ -43,6 +51,7 @@ input string        InpSymbolSuffix  = "";     // Broker suffix, e.g. ".a" (EURU
 input string        InpSymbolPrefix  = "";     // Broker prefix, e.g. "m"  (mEURUSD)
 input long          InpSlaveMagic    = 990011; // Magic number stamped on copied trades
 input bool          InpCopySLTP      = true;   // Copy stop loss / take profit levels
+input double        InpTpFraction    = 0.5;    // TP distance vs master (0.5 = half). SL is always copied 1:1
 input bool          InpEnableTrading = true;   // Master OFF switch. false = read only, no trades
 input int           InpMaxStaleSec   = 30;     // If master file older than this, stop OPENING new trades
 input int           InpTimerMs       = 500;    // How often to read & reconcile (ms)
@@ -60,6 +69,7 @@ ulong    m_ticket[];
 string   m_symbol[];
 int      m_type[];
 double   m_volume[];
+double   m_open[];
 double   m_sl[];
 double   m_tp[];
 long     g_masterLogin  = 0;
@@ -164,6 +174,7 @@ bool ReadSnapshot()
    ArrayResize(m_symbol, 0);
    ArrayResize(m_type,   0);
    ArrayResize(m_volume, 0);
+   ArrayResize(m_open,   0);
    ArrayResize(m_sl,     0);
    ArrayResize(m_tp,     0);
    g_masterCount = 0;
@@ -193,6 +204,7 @@ bool ReadSnapshot()
          ArrayResize(m_symbol, idx + 1);
          ArrayResize(m_type,   idx + 1);
          ArrayResize(m_volume, idx + 1);
+         ArrayResize(m_open,   idx + 1);
          ArrayResize(m_sl,     idx + 1);
          ArrayResize(m_tp,     idx + 1);
 
@@ -200,6 +212,7 @@ bool ReadSnapshot()
          m_symbol[idx] = parts[2];
          m_type[idx]   = (int)StringToInteger(parts[3]);
          m_volume[idx] = StringToDouble(parts[4]);
+         m_open[idx]   = StringToDouble(parts[5]);
          m_sl[idx]     = StringToDouble(parts[6]);
          m_tp[idx]     = StringToDouble(parts[7]);
          g_masterCount++;
@@ -250,6 +263,19 @@ double NormalizeVolume(const string sym, double vol)
 }
 
 //+------------------------------------------------------------------+
+//| Slave take-profit = a fraction of the master's TP distance.      |
+//| Anchored to the master's own entry -> TP, so it does not depend  |
+//| on the real broker's price. Returns 0 (no TP) if master has none.|
+//+------------------------------------------------------------------+
+double ComputeSlaveTP(const string sym, double masterOpen, double masterTP)
+{
+   if(masterTP <= 0.0 || masterOpen <= 0.0) return 0.0; // master has no TP
+   int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   double tp = masterOpen + (masterTP - masterOpen) * InpTpFraction;
+   return NormalizeDouble(tp, digits);
+}
+
+//+------------------------------------------------------------------+
 //| Desired slave volume for a given master volume                   |
 //+------------------------------------------------------------------+
 double DesiredVolume(const string slaveSym, double masterVol)
@@ -292,8 +318,8 @@ void Reconcile()
 
       if(InpEnableTrading && InpCopySLTP)
       {
-         double wantSL = m_sl[mIdx];
-         double wantTP = m_tp[mIdx];
+         double wantSL = m_sl[mIdx];                                        // SL copied 1:1
+         double wantTP = ComputeSlaveTP(slaveSym, m_open[mIdx], m_tp[mIdx]); // TP = fraction of master
          if(MathAbs(PositionGetDouble(POSITION_SL) - wantSL) > _Point ||
             MathAbs(PositionGetDouble(POSITION_TP) - wantTP) > _Point)
             g_trade.PositionModify(sTicket, wantSL, wantTP);
@@ -336,8 +362,9 @@ void Reconcile()
       if(vol <= 0) continue;
 
       string comment = StringFormat("MC#%I64u", m_ticket[j]);
-      double sl = InpCopySLTP ? m_sl[j] : 0.0;
-      double tp = InpCopySLTP ? m_tp[j] : 0.0;
+      double sl = InpCopySLTP ? m_sl[j] : 0.0;                                 // SL copied 1:1
+      double tp = InpCopySLTP ? ComputeSlaveTP(slaveSym, m_open[j], m_tp[j])   // TP = fraction of master
+                              : 0.0;
 
       g_trade.SetTypeFillingBySymbol(slaveSym);
       bool ok = (m_type[j] == 0) ? g_trade.Buy(vol, slaveSym, 0.0, sl, tp, comment)
