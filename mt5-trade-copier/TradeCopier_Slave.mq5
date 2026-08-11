@@ -3,12 +3,15 @@
 //|   Free local trade copier - SLAVE side (runs on the REAL acct)    |
 //|                                                                  |
 //|   Reads the snapshot written by the Master EA and mirrors every  |
-//|   position, multiplying the lot size (default x10, so a 0.01     |
-//|   demo trade becomes 0.10 on the real account).                  |
+//|   position. You control the copy lot in TWO ways:                |
 //|                                                                  |
-//|   - Opens positions the master has but the slave doesn't.        |
-//|   - Closes positions the master has closed.                      |
-//|   - Keeps SL/TP and volume in sync.                              |
+//|     * MANUAL FIXED lot  -> every copy uses a lot you set, and    |
+//|       you can change it LIVE with on-chart + / - buttons.        |
+//|       (0.01 demo trade -> 0.10, or 0.20, or whatever you pick.)  |
+//|                                                                  |
+//|     * MULTIPLIER        -> copy lot = demo lot x multiplier.     |
+//|                                                                  |
+//|   The chosen lot is saved and survives an EA/terminal restart.   |
 //|                                                                  |
 //|   100% free. No DLLs, no external services, no subscriptions.    |
 //|                                                                  |
@@ -17,27 +20,40 @@
 //|   1:1 mapping will not work correctly.                           |
 //+------------------------------------------------------------------+
 #property copyright "Free Trade Copier"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
 
 #include <Trade/Trade.mqh>
 
+//--- Lot sizing mode ------------------------------------------------
+enum ENUM_LOT_MODE
+{
+   LOT_MANUAL_FIXED = 0,  // Manual fixed lot (adjust live with the buttons)
+   LOT_MULTIPLIER   = 1   // Demo lot x multiplier
+};
+
 //--- Inputs ---------------------------------------------------------
-input string InpSignalFile     = "trade_copier_signals.csv"; // Shared file name (must match Master)
-input double InpLotMultiplier  = 10.0;   // 0.01 x 10 = 0.10. Set your multiplier here
-input double InpFixedLot       = 0.0;    // >0 = ignore multiplier, use this fixed lot for every copy
-input string InpSymbolSuffix   = "";     // e.g. ".a" or ".pro" if the real broker adds a suffix (EURUSD.a)
-input string InpSymbolPrefix   = "";     // e.g. "m" if the real broker uses a prefix (mEURUSD)
-input long   InpSlaveMagic     = 990011; // Magic number stamped on copied trades (leave as-is)
-input bool   InpCopySLTP       = true;   // Copy stop loss / take profit levels
-input bool   InpEnableTrading  = true;   // Master OFF switch. false = read only, no trades
-input int    InpMaxStaleSec    = 30;     // If the master file is older than this, stop OPENING new trades
-input int    InpTimerMs        = 500;    // How often to read & reconcile (ms)
-input int    InpDeviation      = 20;     // Max price slippage (points) for market orders
-input bool   InpVerbose        = true;   // Print status to the Experts log
+input string        InpSignalFile    = "trade_copier_signals.csv"; // Shared file name (must match Master)
+input ENUM_LOT_MODE InpLotMode       = LOT_MANUAL_FIXED; // Lot mode
+input double        InpManualLot     = 0.10;   // MANUAL mode: starting lot (change live with buttons)
+input double        InpLotStepSmall  = 0.01;   // Small +/- button step
+input double        InpLotStepBig    = 0.10;   // Big +/- button step
+input double        InpMultiplier    = 10.0;   // MULTIPLIER mode: demo lot x this (0.01 x 10 = 0.10)
+input string        InpSymbolSuffix  = "";     // Broker suffix, e.g. ".a" (EURUSD.a)
+input string        InpSymbolPrefix  = "";     // Broker prefix, e.g. "m"  (mEURUSD)
+input long          InpSlaveMagic    = 990011; // Magic number stamped on copied trades
+input bool          InpCopySLTP      = true;   // Copy stop loss / take profit levels
+input bool          InpEnableTrading = true;   // Master OFF switch. false = read only, no trades
+input int           InpMaxStaleSec   = 30;     // If master file older than this, stop OPENING new trades
+input int           InpTimerMs       = 500;    // How often to read & reconcile (ms)
+input int           InpDeviation     = 20;     // Max price slippage (points) for market orders
+input bool          InpShowPanel     = true;   // Show the on-chart lot control panel
+input bool          InpVerbose       = true;   // Print status to the Experts log
 
 //--- Globals --------------------------------------------------------
 CTrade   g_trade;
+double   g_manualLot = 0.10;   // live-adjustable lot (MANUAL mode)
+string   g_gvName;             // GlobalVariable name to persist the lot
 
 // Parsed master snapshot
 ulong    m_ticket[];
@@ -50,27 +66,85 @@ long     g_masterLogin  = 0;
 long     g_masterTime   = 0;
 int      g_masterCount  = 0;
 
+//--- Panel object names ---------------------------------------------
+#define PNL   "TCpanel_"
+string   BTN_MM, BTN_M, BTN_P, BTN_PP, LBL_VAL, LBL_TTL;
+
 //+------------------------------------------------------------------+
 int OnInit()
 {
    g_trade.SetExpertMagicNumber(InpSlaveMagic);
    g_trade.SetDeviationInPoints(InpDeviation);
    g_trade.SetTypeFillingBySymbol(_Symbol);
+
+   //--- restore the last-used manual lot (survives restarts)
+   g_gvName = "TC_LOT_" + IntegerToString(InpSlaveMagic);
+   if(GlobalVariableCheck(g_gvName))
+      g_manualLot = GlobalVariableGet(g_gvName);
+   else
+      g_manualLot = InpManualLot;
+   g_manualLot = CleanLot(g_manualLot);
+
+   if(InpShowPanel && InpLotMode == LOT_MANUAL_FIXED)
+      CreatePanel();
+
    EventSetMillisecondTimer((InpTimerMs < 100) ? 100 : InpTimerMs);
+
    if(InpVerbose)
-      PrintFormat("[SLAVE] Started. Account #%I64d. Reading Common\\Files\\%s  Multiplier=%.2f",
-                  AccountInfoInteger(ACCOUNT_LOGIN), InpSignalFile, InpLotMultiplier);
+      PrintFormat("[SLAVE] Started. Account #%I64d. Mode=%s  Lot=%.2f  Reading Common\\Files\\%s",
+                  AccountInfoInteger(ACCOUNT_LOGIN),
+                  (InpLotMode==LOT_MANUAL_FIXED ? "MANUAL" : "MULTIPLIER"),
+                  (InpLotMode==LOT_MANUAL_FIXED ? g_manualLot : InpMultiplier),
+                  InpSignalFile);
    return(INIT_SUCCEEDED);
 }
 
 //+------------------------------------------------------------------+
-void OnDeinit(const int reason) { EventKillTimer(); }
+void OnDeinit(const int reason)
+{
+   EventKillTimer();
+   ObjectsDeleteAll(0, PNL);
+   ChartRedraw();
+}
 
 //+------------------------------------------------------------------+
 void OnTimer()
 {
    if(!ReadSnapshot()) return;
    Reconcile();
+}
+
+//+------------------------------------------------------------------+
+//| On-chart button clicks -> change the live manual lot             |
+//+------------------------------------------------------------------+
+void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
+{
+   if(id != CHARTEVENT_OBJECT_CLICK) return;
+
+   if(sparam == BTN_MM)      g_manualLot -= InpLotStepBig;
+   else if(sparam == BTN_M)  g_manualLot -= InpLotStepSmall;
+   else if(sparam == BTN_P)  g_manualLot += InpLotStepSmall;
+   else if(sparam == BTN_PP) g_manualLot += InpLotStepBig;
+   else return;
+
+   g_manualLot = CleanLot(g_manualLot);
+   GlobalVariableSet(g_gvName, g_manualLot);   // persist
+   UpdatePanelValue();
+
+   // un-press the button
+   ObjectSetInteger(0, sparam, OBJPROP_STATE, false);
+   ChartRedraw();
+
+   if(InpVerbose) PrintFormat("[SLAVE] Copy lot set to %.2f (applies to NEW copies)", g_manualLot);
+}
+
+//+------------------------------------------------------------------+
+//| Keep a lot sane: >= 0.01, rounded to 2 dp                        |
+//+------------------------------------------------------------------+
+double CleanLot(double v)
+{
+   if(v < 0.01) v = 0.01;
+   return NormalizeDouble(v, 2);
 }
 
 //+------------------------------------------------------------------+
@@ -96,10 +170,7 @@ bool ReadSnapshot()
 
    int h = FileOpen(InpSignalFile, FILE_READ | FILE_TXT | FILE_ANSI | FILE_COMMON);
    if(h == INVALID_HANDLE)
-   {
-      // File may briefly not exist during the master's atomic move; that's fine.
-      return false;
-   }
+      return false; // file may briefly not exist during the master's atomic move
 
    while(!FileIsEnding(h))
    {
@@ -139,16 +210,12 @@ bool ReadSnapshot()
 }
 
 //+------------------------------------------------------------------+
-//| Is the master snapshot fresh enough to open new trades?          |
-//+------------------------------------------------------------------+
 bool MasterIsFresh()
 {
    long age = (long)TimeCurrent() - g_masterTime;
    return (age <= InpMaxStaleSec && age >= -InpMaxStaleSec);
 }
 
-//+------------------------------------------------------------------+
-//| Find the master index for a given master ticket (-1 if gone)     |
 //+------------------------------------------------------------------+
 int FindMasterIndex(const ulong masterTicket)
 {
@@ -158,15 +225,13 @@ int FindMasterIndex(const ulong masterTicket)
 }
 
 //+------------------------------------------------------------------+
-//| Parse the master ticket we stamped in a slave position's comment |
-//| Comment format: "MC#<masterticket>"                              |
+//| Master ticket we stamped in a copy's comment ("MC#<ticket>")     |
 //+------------------------------------------------------------------+
 ulong MasterTicketFromComment(const string comment)
 {
    int p = StringFind(comment, "MC#");
    if(p < 0) return 0;
-   string num = StringSubstr(comment, p + 3);
-   return (ulong)StringToInteger(num);
+   return (ulong)StringToInteger(StringSubstr(comment, p + 3));
 }
 
 //+------------------------------------------------------------------+
@@ -175,24 +240,22 @@ ulong MasterTicketFromComment(const string comment)
 double NormalizeVolume(const string sym, double vol)
 {
    double vmin  = SymbolInfoDouble(sym, SYMBOL_VOLUME_MIN);
-   double vmax  = SymbolInfoDouble(sym, SYMBOL_VOLUME_STEP); // temp, reassigned below
+   double vmax  = SymbolInfoDouble(sym, SYMBOL_VOLUME_MAX);
    double vstep = SymbolInfoDouble(sym, SYMBOL_VOLUME_STEP);
-   vmax         = SymbolInfoDouble(sym, SYMBOL_VOLUME_MAX);
-
    if(vstep <= 0) vstep = 0.01;
    vol = MathRound(vol / vstep) * vstep;
    if(vol < vmin) vol = vmin;
    if(vol > vmax) vol = vmax;
-   // clean floating point noise
    return NormalizeDouble(vol, 2);
 }
 
 //+------------------------------------------------------------------+
-//| Desired slave volume for a master volume                         |
+//| Desired slave volume for a given master volume                   |
 //+------------------------------------------------------------------+
 double DesiredVolume(const string slaveSym, double masterVol)
 {
-   double v = (InpFixedLot > 0.0) ? InpFixedLot : masterVol * InpLotMultiplier;
+   double v = (InpLotMode == LOT_MANUAL_FIXED) ? g_manualLot
+                                               : masterVol * InpMultiplier;
    return NormalizeVolume(slaveSym, v);
 }
 
@@ -203,8 +266,7 @@ void Reconcile()
 {
    bool fresh = MasterIsFresh();
 
-   //=== PASS 1: walk our own copied positions =======================
-   // Close any whose master ticket is gone; sync SL/TP & volume for the rest.
+   //=== PASS 1: our own copies -> close if master gone, sync others =
    int total = PositionsTotal();
    for(int i = total - 1; i >= 0; i--)
    {
@@ -213,52 +275,44 @@ void Reconcile()
       if(!PositionSelectByTicket(sTicket)) continue;
       if(PositionGetInteger(POSITION_MAGIC) != InpSlaveMagic) continue;
 
-      string sComment  = PositionGetString(POSITION_COMMENT);
-      ulong  mTicket   = MasterTicketFromComment(sComment);
-      if(mTicket == 0) continue; // not one of ours / no mapping
+      ulong mTicket = MasterTicketFromComment(PositionGetString(POSITION_COMMENT));
+      if(mTicket == 0) continue;
 
       int mIdx = FindMasterIndex(mTicket);
 
       if(mIdx < 0)
       {
-         // Master closed it -> close the copy. (Closing is always allowed,
-         // even if the feed is briefly stale, to protect the real account.)
-         if(InpEnableTrading)
-         {
-            if(g_trade.PositionClose(sTicket))
-               { if(InpVerbose) PrintFormat("[SLAVE] Closed copy #%I64u (master %I64u gone)", sTicket, mTicket); }
-         }
+         // Master closed it -> close the copy (always allowed, even if stale).
+         if(InpEnableTrading && g_trade.PositionClose(sTicket) && InpVerbose)
+            PrintFormat("[SLAVE] Closed copy #%I64u (master %I64u gone)", sTicket, mTicket);
          continue;
       }
 
-      // Still open on master -> keep SL/TP and volume aligned.
       string slaveSym = PositionGetString(POSITION_SYMBOL);
-      double sSL      = PositionGetDouble(POSITION_SL);
-      double sTP      = PositionGetDouble(POSITION_TP);
-      double sVol     = PositionGetDouble(POSITION_VOLUME);
 
       if(InpEnableTrading && InpCopySLTP)
       {
          double wantSL = m_sl[mIdx];
          double wantTP = m_tp[mIdx];
-         if(MathAbs(sSL - wantSL) > _Point || MathAbs(sTP - wantTP) > _Point)
+         if(MathAbs(PositionGetDouble(POSITION_SL) - wantSL) > _Point ||
+            MathAbs(PositionGetDouble(POSITION_TP) - wantTP) > _Point)
             g_trade.PositionModify(sTicket, wantSL, wantTP);
       }
 
-      // Volume sync (handles master scaling out): only reduce here.
-      if(InpEnableTrading)
+      // Volume sync only makes sense in MULTIPLIER mode (master scaling out).
+      // In MANUAL mode the copy lot is a fixed number you chose, so we leave it.
+      if(InpEnableTrading && InpLotMode == LOT_MULTIPLIER)
       {
+         double sVol    = PositionGetDouble(POSITION_VOLUME);
          double wantVol = DesiredVolume(slaveSym, m_volume[mIdx]);
          double vstep   = SymbolInfoDouble(slaveSym, SYMBOL_VOLUME_STEP);
          if(vstep <= 0) vstep = 0.01;
-         if(sVol - wantVol >= vstep - 1e-8 && wantVol >= SymbolInfoDouble(slaveSym, SYMBOL_VOLUME_MIN))
+         if(sVol - wantVol >= vstep - 1e-8 &&
+            wantVol >= SymbolInfoDouble(slaveSym, SYMBOL_VOLUME_MIN))
          {
             double reduce = NormalizeVolume(slaveSym, sVol - wantVol);
-            if(reduce > 0)
-            {
-               if(g_trade.PositionClosePartial(sTicket, reduce))
-                  { if(InpVerbose) PrintFormat("[SLAVE] Reduced copy #%I64u by %.2f", sTicket, reduce); }
-            }
+            if(reduce > 0 && g_trade.PositionClosePartial(sTicket, reduce) && InpVerbose)
+               PrintFormat("[SLAVE] Reduced copy #%I64u by %.2f", sTicket, reduce);
          }
       }
    }
@@ -273,7 +327,7 @@ void Reconcile()
       string slaveSym = MapSymbol(m_symbol[j]);
       if(!SymbolSelect(slaveSym, true))
       {
-         if(InpVerbose) PrintFormat("[SLAVE] Symbol '%s' not found on this broker - skipping master %I64u",
+         if(InpVerbose) PrintFormat("[SLAVE] Symbol '%s' not found - skipping master %I64u",
                                     slaveSym, m_ticket[j]);
          continue;
       }
@@ -286,24 +340,20 @@ void Reconcile()
       double tp = InpCopySLTP ? m_tp[j] : 0.0;
 
       g_trade.SetTypeFillingBySymbol(slaveSym);
-      bool ok;
-      if(m_type[j] == 0) // BUY
-         ok = g_trade.Buy(vol, slaveSym, 0.0, sl, tp, comment);
-      else               // SELL
-         ok = g_trade.Sell(vol, slaveSym, 0.0, sl, tp, comment);
+      bool ok = (m_type[j] == 0) ? g_trade.Buy(vol, slaveSym, 0.0, sl, tp, comment)
+                                 : g_trade.Sell(vol, slaveSym, 0.0, sl, tp, comment);
 
       if(InpVerbose)
       {
          if(ok) PrintFormat("[SLAVE] Opened %s %.2f %s copy of master %I64u",
                             (m_type[j]==0?"BUY":"SELL"), vol, slaveSym, m_ticket[j]);
-         else   PrintFormat("[SLAVE] OPEN FAILED for master %I64u (%s): retcode=%d %s",
-                            m_ticket[j], slaveSym, g_trade.ResultRetcode(), g_trade.ResultRetcodeDescription());
+         else   PrintFormat("[SLAVE] OPEN FAILED master %I64u (%s): retcode=%d %s",
+                            m_ticket[j], slaveSym, g_trade.ResultRetcode(),
+                            g_trade.ResultRetcodeDescription());
       }
    }
 }
 
-//+------------------------------------------------------------------+
-//| Do we already have a copy open for this master ticket?           |
 //+------------------------------------------------------------------+
 bool HaveCopyFor(const ulong masterTicket)
 {
@@ -318,5 +368,71 @@ bool HaveCopyFor(const ulong masterTicket)
          return true;
    }
    return false;
+}
+
+//+------------------------------------------------------------------+
+//| On-chart lot control panel                                       |
+//+------------------------------------------------------------------+
+void CreatePanel()
+{
+   BTN_MM  = PNL + "mm";
+   BTN_M   = PNL + "m";
+   BTN_P   = PNL + "p";
+   BTN_PP  = PNL + "pp";
+   LBL_VAL = PNL + "val";
+   LBL_TTL = PNL + "ttl";
+
+   int x = 10, y = 24, h = 26, gap = 4;
+
+   MakeLabel(LBL_TTL, x, y - 18, "COPY LOT (real account)", clrGainsboro, 9);
+
+   MakeButton(BTN_MM, x,               y, 46, h, "-"+DoubleToString(InpLotStepBig,2),   clrFireBrick);
+   MakeButton(BTN_M,  x+46+gap,        y, 40, h, "-"+DoubleToString(InpLotStepSmall,2), clrIndianRed);
+   MakeLabel (LBL_VAL,x+46+gap+40+gap+6, y+4, DoubleToString(g_manualLot,2), clrWhite, 14);
+   MakeButton(BTN_P,  x+46+gap+40+gap+70,        y, 40, h, "+"+DoubleToString(InpLotStepSmall,2), clrForestGreen);
+   MakeButton(BTN_PP, x+46+gap+40+gap+70+40+gap, y, 46, h, "+"+DoubleToString(InpLotStepBig,2),   clrGreen);
+
+   ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+void UpdatePanelValue()
+{
+   if(ObjectFind(0, LBL_VAL) >= 0)
+      ObjectSetString(0, LBL_VAL, OBJPROP_TEXT, DoubleToString(g_manualLot, 2));
+}
+
+//+------------------------------------------------------------------+
+void MakeButton(string name, int x, int y, int w, int h, string text, color bg)
+{
+   ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, w);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, h);
+   ObjectSetString (0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clrWhite);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 10);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, clrBlack);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+}
+
+//+------------------------------------------------------------------+
+void MakeLabel(string name, int x, int y, string text, color clr, int size)
+{
+   ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetString (0, name, OBJPROP_TEXT, text);
+   ObjectSetString (0, name, OBJPROP_FONT, "Arial Bold");
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, size);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
 }
 //+------------------------------------------------------------------+

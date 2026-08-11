@@ -72,19 +72,41 @@ both EAs to the same terminal.
 
 ---
 
-## Slave inputs
+## Choosing the copy lot — you control it
+
+There are two modes, set by `InpLotMode` on the Slave:
+
+- **`LOT_MANUAL_FIXED` (default) — you pick the exact lot.** Every copied trade uses
+  a lot *you* set, no matter what the demo does. A 0.01 demo trade becomes whatever
+  you choose (0.10, 0.20, …). You can change it **live from the chart**: the Slave
+  draws a small panel with `-0.10 / -0.01 / [ 0.10 ] / +0.01 / +0.10` buttons.
+  Click to raise/lower it any time — the new value applies to the **next** copies
+  and is **saved** across restarts. Set the starting value with `InpManualLot`.
+- **`LOT_MULTIPLIER` — copy lot = demo lot × `InpMultiplier`.** e.g. ×10 makes 0.01 → 0.10,
+  and it tracks the demo (0.02 demo → 0.20). Use this if you want the real account to
+  scale proportionally with the demo instead of a fixed size.
+
+> Changing the lot affects **new** copies only — trades already open keep their lot.
+
+### Slave inputs
 
 | Input | Default | Meaning |
 |---|---|---|
 | `InpSignalFile` | `trade_copier_signals.csv` | Must match the Master exactly. |
-| `InpLotMultiplier` | `10.0` | 0.01 × 10 = 0.10. Your lot scaling. |
-| `InpFixedLot` | `0.0` | If > 0, ignore the multiplier and use this exact lot for every copy. |
+| `InpLotMode` | `LOT_MANUAL_FIXED` | `LOT_MANUAL_FIXED` = you pick the lot (live buttons). `LOT_MULTIPLIER` = demo lot × multiplier. |
+| `InpManualLot` | `0.10` | MANUAL mode: starting lot (then adjust live with the buttons). |
+| `InpLotStepSmall` | `0.01` | Step for the small +/- buttons. |
+| `InpLotStepBig` | `0.10` | Step for the big +/- buttons. |
+| `InpMultiplier` | `10.0` | MULTIPLIER mode only: 0.01 × 10 = 0.10. |
 | `InpSymbolSuffix` | `""` | Broker suffix, e.g. `.a`, `.pro`, `.m`. |
 | `InpSymbolPrefix` | `""` | Broker prefix, e.g. `m` for `mEURUSD`. |
 | `InpCopySLTP` | `true` | Copy stop‑loss / take‑profit. |
 | `InpEnableTrading` | `true` | Set `false` for a dry run (reads, logs, but places no trades). |
 | `InpMaxStaleSec` | `30` | If the demo terminal/EA stops updating the file, the Slave stops **opening** new trades (it still closes copies whose master is gone). |
-| `InpLotMultiplier` risk | — | Remember: ×10 lots = ×10 risk. Size it for the real account balance. |
+| `InpShowPanel` | `true` | Show the on-chart lot control panel (MANUAL mode). |
+
+> ⚠️ Bigger lots = bigger risk. A 0.10 copy of a 0.01 demo trade risks ~10× the money.
+> Pick a lot sized for the **real** account's balance.
 
 ---
 
