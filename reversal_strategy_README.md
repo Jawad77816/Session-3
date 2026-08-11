@@ -34,6 +34,30 @@ rebuilt from the price-action video (XAUUSD, 5-minute chart).
   at the first target.
 - **Filters** — optional volume-spike requirement and a trading-session window.
 
+## MetaTrader 5 version — `ReversalAfterTrend.mq5`
+
+Same logic as a **MT5 indicator** (signals + alerts, it does not place trades).
+
+**Install**
+1. In MT5: **File → Open Data Folder → MQL5 → Indicators**, copy
+   `ReversalAfterTrend.mq5` there.
+2. In MetaEditor press **Compile** (or right-click the file in the Navigator →
+   Refresh), then drag **Reversal After Trend** onto an XAUUSD M5 chart.
+3. Terminal **Tools → Options → Notifications**: enable push (and set your
+   MetaQuotes ID) if you want mobile alerts; **Email** tab for e-mail alerts.
+
+**What it does**
+- Draws a **Buy** arrow (below the bar) / **Sell** arrow (above the bar) on each
+  reversal signal, plus dotted Entry / red SL / green TP1 / TP2 lines for the
+  latest signal.
+- On every new signal it fires a **popup + sound** (default `alert.wav` /
+  `alert2.wav`) and optional **push / e-mail**, with the message:
+  `BUY XAUUSD M5 | Entry … SL … TP1 … TP2 …`
+
+**Key inputs** — `InpTrendLen` (consecutive candles, default 5), colour mode,
+optional volume filter, `InpSLMode`, `InpRR1`/`InpRR2`, and the sound file names.
+By default it alerts only on **closed bars** (no repaint).
+
 ## Honest limitation
 
 The video's **audio could not be transcribed** in this environment (the network
