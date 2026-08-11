@@ -2,10 +2,11 @@
 //|                                             TripleEMACross_EA.mq5 |
 //|                                                                  |
 //|  Strategy (any timeframe):                                       |
-//|   - EMAs 9 / 15 / 21. When stacked bullishly (9 > 15 > 21) and    |
-//|     the closed candle is a STRONG bullish candle -> BUY.          |
-//|   - When stacked bearishly (9 < 15 < 21) and a STRONG bearish     |
-//|     candle -> SELL.                                               |
+//|   - EMAs 9 / 15 / 21. A STRONG candle with the ribbon stacked     |
+//|     (9>15>21 bull / 9<15<21 bear) ARMS the setup.                 |
+//|   - Entry is taken on the RETEST: price pulls back to the chosen  |
+//|     EMA and closes back through it in the trend direction.        |
+//|     The setup cancels if the ribbon breaks or no retest in N bars.|
 //|   - SL = that candle's low (buy) / high (sell).                   |
 //|     TP = InpRewardRatio x risk (default 2.0 => 1:2).             |
 //|   - One position at a time. No pivots, no grid, no trailing.      |
@@ -18,10 +19,12 @@
 //|     first lines up; off = trade any strong candle while aligned.  |
 //+------------------------------------------------------------------+
 #property copyright "Session-3"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
 
 #include <Trade/Trade.mqh>
+
+enum ERETEST_EMA { RETEST_FAST=0, RETEST_MID=1, RETEST_SLOW=2 };
 
 //============================ INPUTS ================================//
 input group "=== Entry / Sizing ==="
@@ -35,6 +38,10 @@ input int                InpEMAMid          = 15;            // Middle EMA
 input int                InpEMASlow         = 21;            // Slow EMA
 input double             InpStrongBodyRatio = 0.6;           // "Strong" = body / candle range >= this
 input bool               InpRequireFreshStack = false;       // true = only on the bar the ribbon lines up
+
+input group "=== Retest Entry ==="
+input ERETEST_EMA        InpRetestEMA       = RETEST_FAST;    // Which EMA price must pull back to (9 / 15 / 21)
+input int                InpRetestMaxBars   = 10;             // Cancel the armed setup if no retest within N bars
 
 input group "=== Targets (SL at candle extreme, TP = R:R) ==="
 input double             InpRewardRatio     = 2.0;           // TP = this x risk (2.0 => 1:2). Manually adjustable.
@@ -73,6 +80,10 @@ datetime  g_lastSignalBar = 0;
 bool      g_calBlackout   = false;
 datetime  g_calLastCheck  = 0;
 string    g_lastSigTxt    = "-";
+
+// Retest state machine
+int       g_pendingDir    = 0;    // +1 armed for buy, -1 armed for sell, 0 = none
+int       g_pendingBars   = 0;    // bars elapsed since the setup was armed
 
 //+------------------------------------------------------------------+
 //| Server time -> PKT wall-clock (UTC+5) for manual news times      |
@@ -248,10 +259,39 @@ double EMAv(int handle, int shift)
   }
 
 //+------------------------------------------------------------------+
-//| Signal on the last closed candle. dir=+1 buy/-1 sell/0 none.     |
-//| candleExtreme = that candle's low (buy) / high (sell) for the SL.|
+//| The EMA handle price must pull back to for the retest.           |
 //+------------------------------------------------------------------+
-bool CheckSignal(int &dir, double &candleExtreme)
+int RetestHandle()
+  {
+   if(InpRetestEMA == RETEST_MID)  return emaMidH;
+   if(InpRetestEMA == RETEST_SLOW) return emaSlowH;
+   return emaFastH;
+  }
+
+//+------------------------------------------------------------------+
+//| Ribbon alignment on the last closed candle. +1 bull / -1 bear.  |
+//+------------------------------------------------------------------+
+int RibbonDir()
+  {
+   double e9  = EMAv(emaFastH, 1);
+   double e15 = EMAv(emaMidH,  1);
+   double e21 = EMAv(emaSlowH, 1);
+   if(e9 <= 0 || e15 <= 0 || e21 <= 0) return 0;
+   if(e9 > e15 && e15 > e21) return  1;   // 9 top, 15 middle, 21 bottom
+   if(e9 < e15 && e15 < e21) return -1;   // 9 bottom, 15 middle, 21 top
+   return 0;
+  }
+
+//+------------------------------------------------------------------+
+//| Retest state machine (evaluated once per closed candle).         |
+//|  1) An aligned ribbon + STRONG candle ARMS a setup.              |
+//|  2) While armed, the ENTRY fires on the retest: price pulls back |
+//|     to the chosen EMA and the candle closes back through it in   |
+//|     the trend direction. SL = that retest candle's low/high.     |
+//|  3) The setup cancels if the ribbon breaks or no retest in N bars|
+//| Returns true (with dir + candleExtreme) only when entry fires.   |
+//+------------------------------------------------------------------+
+bool EvaluateEntry(int &dir, double &candleExtreme)
   {
    dir = 0;
    double O = iOpen(_Symbol,  InpSignalTF, 1);
@@ -260,34 +300,68 @@ bool CheckSignal(int &dir, double &candleExtreme)
    double C = iClose(_Symbol, InpSignalTF, 1);
    if(O <= 0 || H <= 0 || L <= 0 || C <= 0) return false;
 
+   int ribbon = RibbonDir();
+
+   //--- 1) Maintain / cancel an already-armed setup -----------------
+   if(g_pendingDir != 0)
+     {
+      g_pendingBars++;
+      // ribbon must stay aligned in the pending direction
+      if(ribbon != g_pendingDir)
+        { g_pendingDir = 0; g_pendingBars = 0; g_lastSigTxt = "setup cancelled (ribbon)"; }
+      else if(g_pendingBars > InpRetestMaxBars)
+        { g_pendingDir = 0; g_pendingBars = 0; g_lastSigTxt = "setup expired (no retest)"; }
+      else
+        {
+         double emaR = EMAv(RetestHandle(), 1);
+         if(emaR > 0)
+           {
+            // BUY: candle dipped to/through the EMA then closed back above it, bullish close
+            if(g_pendingDir > 0 && L <= emaR && C > emaR && C > O)
+              {
+               dir = 1; candleExtreme = L;
+               g_pendingDir = 0; g_pendingBars = 0;
+               g_lastSigTxt = "BUY retest " + TimeToString(iTime(_Symbol,InpSignalTF,1),TIME_MINUTES);
+               return true;
+              }
+            // SELL: candle popped to/through the EMA then closed back below it, bearish close
+            if(g_pendingDir < 0 && H >= emaR && C < emaR && C < O)
+              {
+               dir = -1; candleExtreme = H;
+               g_pendingDir = 0; g_pendingBars = 0;
+               g_lastSigTxt = "SELL retest " + TimeToString(iTime(_Symbol,InpSignalTF,1),TIME_MINUTES);
+               return true;
+              }
+           }
+         return false;   // still armed, waiting for the retest
+        }
+     }
+
+   //--- 2) Nothing armed: look for a fresh arming signal ------------
+   if(ribbon == 0) return false;
+
    double range = H - L;
    if(range <= 0) return false;
    double body = MathAbs(C - O);
    bool strongBull = (C > O) && (body / range) >= InpStrongBodyRatio;
    bool strongBear = (O > C) && (body / range) >= InpStrongBodyRatio;
-   if(!strongBull && !strongBear) return false;
 
-   double e9  = EMAv(emaFastH, 1);
-   double e15 = EMAv(emaMidH,  1);
-   double e21 = EMAv(emaSlowH, 1);
-   if(e9 <= 0 || e15 <= 0 || e21 <= 0) return false;
+   bool armBull = (ribbon > 0) && strongBull;
+   bool armBear = (ribbon < 0) && strongBear;
 
-   bool bullStack = (e9 > e15 && e15 > e21);   // 9 top, 15 middle, 21 bottom
-   bool bearStack = (e9 < e15 && e15 < e21);   // 9 bottom, 15 middle, 21 top
-
-   // Optional: only fire on the bar the ribbon first lines up
-   if(InpRequireFreshStack)
+   // Optional: only arm on the bar the ribbon first lines up
+   if(InpRequireFreshStack && (armBull || armBear))
      {
       double p9 = EMAv(emaFastH, 2), p15 = EMAv(emaMidH, 2), p21 = EMAv(emaSlowH, 2);
       bool bullPrev = (p9 > p15 && p15 > p21);
       bool bearPrev = (p9 < p15 && p15 < p21);
-      if(bullStack && bullPrev) bullStack = false;   // not fresh
-      if(bearStack && bearPrev) bearStack = false;
+      if(armBull && bullPrev) armBull = false;   // not fresh
+      if(armBear && bearPrev) armBear = false;
      }
 
-   if(bullStack && strongBull) { dir =  1; candleExtreme = L; g_lastSigTxt = "BUY "  + TimeToString(iTime(_Symbol,InpSignalTF,1),TIME_MINUTES); return true; }
-   if(bearStack && strongBear) { dir = -1; candleExtreme = H; g_lastSigTxt = "SELL " + TimeToString(iTime(_Symbol,InpSignalTF,1),TIME_MINUTES); return true; }
-   return false;
+   if(armBull) { g_pendingDir =  1; g_pendingBars = 0; g_lastSigTxt = "armed BUY "  + TimeToString(iTime(_Symbol,InpSignalTF,1),TIME_MINUTES); }
+   if(armBear) { g_pendingDir = -1; g_pendingBars = 0; g_lastSigTxt = "armed SELL " + TimeToString(iTime(_Symbol,InpSignalTF,1),TIME_MINUTES); }
+   return false;   // arming never enters on the same bar; entry waits for the retest
   }
 
 bool IsNewSignalBar()
@@ -316,7 +390,7 @@ void DashPanel()
       ObjectSetInteger(0, obj, OBJPROP_HIDDEN, true);
      }
    ObjectSetInteger(0, obj, OBJPROP_XSIZE, 300);
-   ObjectSetInteger(0, obj, OBJPROP_YSIZE, 236);
+   ObjectSetInteger(0, obj, OBJPROP_YSIZE, 252);
   }
 void DashLabel(int row, string text, color clr)
   {
@@ -344,7 +418,7 @@ void UpdateDashboard()
    color cText = clrSilver, cGood = clrLimeGreen, cBad = clrTomato, cWarn = clrOrange, cHead = clrGold, cDim = C'90,100,120';
    DashPanel();
    int r = 0;
-   DashLabel(r++, "TripleEMACross v1.0  " + _Symbol, cHead);
+   DashLabel(r++, "TripleEMACross v1.1  " + _Symbol, cHead);
    DashLabel(r++, StringFormat("Server %s  (%s)", TimeToString(TimeCurrent(), TIME_MINUTES), TFName(InpSignalTF)), cText);
 
    bool news = IsNewsBlackout();
@@ -360,6 +434,15 @@ void UpdateDashboard()
 
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK), bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    DashLabel(r++, StringFormat("Spread: %d pts   RR 1:%.1f", (int)MathRound((ask - bid)/g_point), InpRewardRatio), cText);
+
+   string retestName = (InpRetestEMA == RETEST_MID) ? "EMA15" : (InpRetestEMA == RETEST_SLOW) ? "EMA21" : "EMA9";
+   if(g_pendingDir > 0)
+      DashLabel(r++, StringFormat("Setup: ARMED BUY - retest %s %d/%d", retestName, g_pendingBars, InpRetestMaxBars), cGood);
+   else if(g_pendingDir < 0)
+      DashLabel(r++, StringFormat("Setup: ARMED SELL - retest %s %d/%d", retestName, g_pendingBars, InpRetestMaxBars), cBad);
+   else
+      DashLabel(r++, "Setup: none (waiting to arm)", cText);
+
    DashLabel(r++, "Last signal: " + g_lastSigTxt, cText);
    DashLabel(r++, "-------------------------------", cDim);
 
@@ -399,7 +482,7 @@ void OnTick()
    if(!newBar) return;                              // act on candle close only
 
    int dir; double ext;
-   if(CheckSignal(dir, ext))
+   if(EvaluateEntry(dir, ext))
       OpenTrade(dir, ext);
   }
 //+------------------------------------------------------------------+
