@@ -66,8 +66,8 @@ allowLong  = input.bool(true,  "Take BUY  setups", group = gD)
 allowShort = input.bool(true,  "Take SELL setups", group = gD)
 oneAtATime = input.bool(true,  "Only one trade at a time (enter only when flat)", group = gD)
 useDates   = input.bool(false, "Limit the back-test date range", group = gD)
-startD     = input.time(timestamp(2024, 1, 1, 0, 0),   "From", group = gD)
-endD       = input.time(timestamp(2026, 12, 31, 23, 59), "To", group = gD)
+startD     = input.time(timestamp("2024-01-01"), "From", group = gD)
+endD       = input.time(timestamp("2027-01-01"), "To",   group = gD)
 
 gV = "⑤ Visuals"
 drawBoxes  = input.bool(true, "Draw SL / TP zones like the video", group = gV)
@@ -88,10 +88,13 @@ downTrendDone = nz(dnRun[1]) >= trendLen   // bearish run -> look for green reve
 upTrendDone   = nz(upRun[1]) >= trendLen   // bullish run -> look for red reversal
 
 // ------------------------------------------------------------------ Filters
-volOk   = not useVol  or volume > ta.sma(volume, volLen)
-inSess  = not useSess or not na(time(timeframe.period, sess))
-inDates = not useDates or (time >= startD and time <= endD)
-flatOk  = not oneAtATime or strategy.position_size == 0
+// (compute history-dependent calls unconditionally so they run on every bar)
+volAvg   = ta.sma(volume, volLen)
+sessTime = time(timeframe.period, sess)
+volOk    = not useVol    or volume > volAvg
+inSess   = not useSess   or not na(sessTime)
+inDates  = not useDates  or (time >= startD and time <= endD)
+flatOk   = not oneAtATime or strategy.position_size == 0
 
 // ------------------------------------------------------------------ Signals
 longSig  = allowLong  and downTrendDone and bull and volOk and inSess and inDates and flatOk
