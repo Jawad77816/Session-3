@@ -23,7 +23,7 @@
 //|  XAUUSD.                                                          |
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal Signal"
-#property version   "1.30"
+#property version   "1.40"
 #property strict
 #property description "Three-candle reversal pattern indicator for XAUUSD on M1/M5."
 #property description "Draws arrows and plays a notification sound on each signal."
@@ -80,6 +80,9 @@ input int      InpDashX         = 12;          // Dashboard X offset (px)
 input int      InpDashY         = 20;          // Dashboard Y offset (px)
 input color    InpDashBgColor   = clrBlack;    // Dashboard background colour
 
+input group    "=== Diagnostics ==="
+input bool     InpLogRejections = true;        // Log why the last closed bar had no signal
+
 input group    "=== Instrument / Timeframe Guards ==="
 input bool     InpRestrictSymbol    = true;    // Only run on XAUUSD-type symbol
 input bool     InpRestrictTimeframe = true;    // Only run on M1 / M5
@@ -98,6 +101,7 @@ double   g_maArr[];                // MA values aligned to the price series
 bool     g_maReady      = false;   // MA buffer valid this calculation
 string   g_lastSignal   = "None";  // last signal (dashboard)
 datetime g_lastSignalTm = 0;       // time of last signal
+string   g_lastCheck    = "-";     // why the last closed bar had no signal (diagnostics)
 #define  DASH_PREFIX      "TCRIND_DASH_"
 
 //+------------------------------------------------------------------+
@@ -335,7 +339,7 @@ void DrawDashboard(const int rates_total)
    int lh = 16;
    int n  = 0;
 
-   DashPanel("BG", x - 6, y - 6, 250, 9 * lh + 14, InpDashBgColor);
+   DashPanel("BG", x - 6, y - 6, 330, 10 * lh + 14, InpDashBgColor);
 
    DashLabel("l0", "3-Candle Reversal Signal", x, y + (n++) * lh, clrGold, 10);
    DashLabel("l1", "Pair/TF : " + _Symbol + " " + TfToStr((ENUM_TIMEFRAMES)_Period),
@@ -359,6 +363,10 @@ void DrawDashboard(const int rates_total)
              x, y + (n++) * lh, clrWhite, 9);
    DashLabel("l8", "Buys/Sells: " + (InpEnableBuy ? "Y" : "N") + "/" + (InpEnableSell ? "Y" : "N"),
              x, y + (n++) * lh, clrWhite, 9);
+
+   bool  isSig = (StringFind(g_lastCheck, "signal") >= 0);
+   color ccol  = (isSig ? clrLime : clrGoldenrod);
+   DashLabel("l9", "Last bar: " + g_lastCheck, x, y + (n++) * lh, ccol, 9);
 
    ChartRedraw(0);
   }
@@ -413,6 +421,53 @@ bool TrendFilterOK(const bool isBuy, const int i, const int rates_total,
      }
 
    return(true);
+  }
+
+//+------------------------------------------------------------------+
+//| Diagnose the last CLOSED bar: which rule stopped a signal?       |
+//|   Returns a short human-readable reason for the dashboard/log.   |
+//+------------------------------------------------------------------+
+string DiagnoseBar(const int sig, const int rates_total, const bool maReady,
+                   const double &open[], const double &high[],
+                   const double &low[],  const double &close[])
+  {
+   if(sig < 2)
+      return("warming up");
+
+   int i1 = sig - 2, i2 = sig - 1, i3 = sig;   // first, middle, third
+   double o1 = open[i1], c1 = close[i1], h1 = high[i1], l1 = low[i1];
+   double o2 = open[i2], c2 = close[i2], h2 = high[i2], l2 = low[i2];
+   double o3 = open[i3], c3 = close[i3], h3 = high[i3], l3 = low[i3];
+
+   bool buySkel  = IsBear(o1, c1) && IsBull(o2, c2) && IsBull(o3, c3);
+   bool sellSkel = IsBull(o1, c1) && IsBear(o2, c2) && IsBear(o3, c3);
+
+   if(!buySkel && !sellSkel)
+      return("no 3-candle colour pattern");
+
+   if(buySkel && InpEnableBuy)
+     {
+      if(!((l2 < l1) && (l2 < l3)))                                 return("BUY blocked: middle not lowest low");
+      if(!(c3 > h1))                                                return("BUY blocked: 3rd body doesn't engulf 1st high");
+      if(InpUseShapeFilter && !IsHammerShape(o2, h2, l2, c2))       return("BUY blocked: middle not a hammer");
+      if(InpUseShapeFilter && !IsSolidCandle(o1, h1, l1, c1))       return("BUY blocked: 1st candle not solid");
+      if(InpUseShapeFilter && !IsSolidCandle(o3, h3, l3, c3))       return("BUY blocked: 3rd candle not solid");
+      if(InpMiddleInsideFirst && !MiddleBodyInsideFirst(o2, c2, o1, c1)) return("BUY blocked: middle body not inside 1st");
+      if(!TrendFilterOK(true, sig, rates_total, high, low, maReady))return("BUY blocked: trend/swing filter");
+      return("BUY signal");
+     }
+   if(sellSkel && InpEnableSell)
+     {
+      if(!((h2 > h1) && (h2 > h3)))                                 return("SELL blocked: middle not highest high");
+      if(!(c3 < l1))                                                return("SELL blocked: 3rd body doesn't engulf 1st low");
+      if(InpUseShapeFilter && !IsStarShape(o2, h2, l2, c2))         return("SELL blocked: middle not a shooting star");
+      if(InpUseShapeFilter && !IsSolidCandle(o1, h1, l1, c1))       return("SELL blocked: 1st candle not solid");
+      if(InpUseShapeFilter && !IsSolidCandle(o3, h3, l3, c3))       return("SELL blocked: 3rd candle not solid");
+      if(InpMiddleInsideFirst && !MiddleBodyInsideFirst(o2, c2, o1, c1)) return("SELL blocked: middle body not inside 1st");
+      if(!TrendFilterOK(false, sig, rates_total, high, low, maReady))return("SELL blocked: trend/swing filter");
+      return("SELL signal");
+     }
+   return("setup disabled (buy/sell off)");
   }
 
 //+------------------------------------------------------------------+
@@ -519,6 +574,10 @@ int OnCalculate(const int        rates_total,
 
    // --- Notifications: only for the most recently CLOSED bar, once ---
    int sig = rates_total - 2;
+
+   // Diagnose the last closed bar every calculation (feeds the dashboard).
+   g_lastCheck = DiagnoseBar(sig, rates_total, maReady, open, high, low, close);
+
    if(sig >= 2)
      {
       datetime bt = time[sig];
@@ -546,6 +605,13 @@ int OnCalculate(const int        rates_total,
            {
             FireAlerts(false, close[sig], bt);
             g_lastSignal = "SELL"; g_lastSignalTm = bt;
+           }
+         else if(InpLogRejections)
+           {
+            // No signal on this new closed bar: log why, so M1/M5 behaviour
+            // is transparent instead of looking "broken".
+            PrintFormat("%s %s | %s | %s", _Symbol, TfToStr((ENUM_TIMEFRAMES)_Period),
+                        TimeToString(bt, TIME_DATE | TIME_MINUTES), g_lastCheck);
            }
          g_lastAlertBar = bt;   // advance so we evaluate each closed bar once
         }
