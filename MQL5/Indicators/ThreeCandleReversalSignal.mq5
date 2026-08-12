@@ -23,7 +23,7 @@
 //|  XAUUSD.                                                          |
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal Signal"
-#property version   "1.20"
+#property version   "1.30"
 #property strict
 #property description "Three-candle reversal pattern indicator for XAUUSD on M1/M5."
 #property description "Draws arrows and plays a notification sound on each signal."
@@ -72,6 +72,7 @@ input double         InpHammerWickPct  = 0.5;       // Dominant wick >= this fra
 input double         InpHammerHeadPct  = 0.15;      // Opposite wick <= this fraction of range
 input double         InpHammerBodyPct  = 0.4;       // Hammer/star body <= this fraction of range
 input double         InpSolidBodyPct   = 0.5;       // 1st/3rd body >= this fraction (not doji/hammer)
+input bool           InpMiddleInsideFirst = true;   // Middle body must sit inside the 1st candle's body
 
 input group    "=== Dashboard ==="
 input bool     InpShowDashboard = true;        // Show on-chart status dashboard
@@ -162,6 +163,21 @@ bool IsSolidCandle(const double o, const double h, const double l, const double 
    if(range <= 0.0) return(false);
    double body = MathAbs(c - o);
    return(body >= InpSolidBodyPct * range);
+  }
+
+//+------------------------------------------------------------------+
+//| Middle body fully contained inside the first candle's body       |
+//|   middle body top <= first body top  AND                         |
+//|   middle body bottom >= first body bottom                        |
+//+------------------------------------------------------------------+
+bool MiddleBodyInsideFirst(const double oMid, const double cMid,
+                           const double oFirst, const double cFirst)
+  {
+   double mTop = MathMax(oMid, cMid);
+   double mBot = MathMin(oMid, cMid);
+   double fTop = MathMax(oFirst, cFirst);
+   double fBot = MathMin(oFirst, cFirst);
+   return(mTop <= fTop && mBot >= fBot);
   }
 
 //+------------------------------------------------------------------+
@@ -468,7 +484,10 @@ int OnCalculate(const int        rates_total,
             shapeOK = IsHammerShape(o2, h2, l2, c2)   // middle = hammer
                    && IsSolidCandle(o1, h1, l1, c1)    // first  = solid
                    && IsSolidCandle(o3, h3, l3, c3);   // third  = solid
-         if(colorsOK && middleLowLowest && bodyEngulfHigh && shapeOK &&
+         // NEW: middle body must sit inside the first candle's body
+         // (its lower wick still pokes below first low via middleLowLowest).
+         bool insideOK = (!InpMiddleInsideFirst) || MiddleBodyInsideFirst(o2, c2, o1, c1);
+         if(colorsOK && middleLowLowest && bodyEngulfHigh && shapeOK && insideOK &&
             TrendFilterOK(true, i, rates_total, high, low, maReady))
            {
             BuyBuffer[i] = l3 - gap;
@@ -487,7 +506,10 @@ int OnCalculate(const int        rates_total,
             shapeOK = IsStarShape(o2, h2, l2, c2)     // middle = shooting star
                    && IsSolidCandle(o1, h1, l1, c1)    // first  = solid
                    && IsSolidCandle(o3, h3, l3, c3);   // third  = solid
-         if(colorsOK && middleHighHighest && bodyEngulfLow && shapeOK &&
+         // NEW: middle body must sit inside the first candle's body
+         // (its upper wick still pokes above first high via middleHighHighest).
+         bool insideOK = (!InpMiddleInsideFirst) || MiddleBodyInsideFirst(o2, c2, o1, c1);
+         if(colorsOK && middleHighHighest && bodyEngulfLow && shapeOK && insideOK &&
             TrendFilterOK(false, i, rates_total, high, low, maReady))
            {
             SellBuffer[i] = h3 + gap;
