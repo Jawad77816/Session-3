@@ -29,19 +29,10 @@
 #property version   "1.00"
 #property description "Opening-range (First Candle Rule) breakout: gap displacement + retest + engulfing entry, fixed R:R. Popup/sound/push alerts. Default R:R 1:2, adjustable."
 #property indicator_chart_window
-#property indicator_buffers 2
-#property indicator_plots   2
-
-//--- Plot 0 : Buy arrow
-#property indicator_label1  "Buy"
-#property indicator_type1   DRAW_ARROW
-#property indicator_color1  clrLime
-#property indicator_width1  2
-//--- Plot 1 : Sell arrow
-#property indicator_label2  "Sell"
-#property indicator_type2   DRAW_ARROW
-#property indicator_color2  clrRed
-#property indicator_width2  2
+#property indicator_buffers 0
+#property indicator_plots   0
+// Signals are drawn as bold "BUY" / "SELL" text objects (see DrawSignalText),
+// not as arrows.
 
 //--- inputs : session / first candle ------------------------------------------
 input group                "=== Session (broker server time!) ==="
@@ -69,6 +60,13 @@ input group                "=== First-candle levels ==="
 input bool   InpDrawLevels    = true;   // Draw the FCR high/low lines
 input color  InpLevelColor    = clrDodgerBlue;
 
+//--- inputs : signal text -----------------------------------------------------
+input group                "=== Signal text (BUY / SELL) ==="
+input string InpSignalFont    = "Arial Black";  // Font (use a bold/black font = thick)
+input int    InpSignalFontSize= 12;             // Font size
+input color  InpBuyColor       = clrLime;       // BUY  text colour
+input color  InpSellColor      = clrRed;        // SELL text colour
+
 //--- inputs : alerts ----------------------------------------------------------
 input group                "=== Alerts / Notifications ==="
 input bool   InpAlertPopup    = true;   // Popup alert
@@ -77,10 +75,6 @@ input string InpBuySound       = "alert.wav";   // Buy  sound
 input string InpSellSound      = "alert2.wav";  // Sell sound
 input bool   InpPush           = false; // Push notification (mobile)
 input bool   InpEmail          = false; // E-mail alert
-
-//--- buffers ------------------------------------------------------------------
-double BuyBuffer[];
-double SellBuffer[];
 
 //--- persistent state ---------------------------------------------------------
 int      g_curDay      = -1;            // yyyymmdd of the day being tracked
@@ -99,14 +93,6 @@ string   g_prefix        = "FCR_";
 //+------------------------------------------------------------------+
 int OnInit()
   {
-   SetIndexBuffer(0, BuyBuffer,  INDICATOR_DATA);
-   SetIndexBuffer(1, SellBuffer, INDICATOR_DATA);
-
-   PlotIndexSetInteger(0, PLOT_ARROW, 233);   // up arrow (buy)
-   PlotIndexSetInteger(1, PLOT_ARROW, 234);   // down arrow (sell)
-   PlotIndexSetDouble(0, PLOT_EMPTY_VALUE, 0.0);
-   PlotIndexSetDouble(1, PLOT_EMPTY_VALUE, 0.0);
-
    IndicatorSetString(INDICATOR_SHORTNAME, "First Candle Rule");
    IndicatorSetInteger(INDICATOR_DIGITS, _Digits);
    return(INIT_SUCCEEDED);
@@ -164,22 +150,13 @@ int OnCalculate(const int rates_total,
    if(lastClosed < 2)
       return(0);
 
-   // keep the forming bar clean
-   BuyBuffer[rates_total-1]  = 0.0;
-   SellBuffer[rates_total-1] = 0.0;
-
    if(prev_calculated == 0)
      {
-      ArrayInitialize(BuyBuffer,  0.0);
-      ArrayInitialize(SellBuffer, 0.0);
       ObjectsDeleteAll(0, g_prefix);
       g_curDay = -1;  ResetDay();
       g_liveMode = false;
       for(int i = 2; i <= lastClosed; i++)
-        {
-         BuyBuffer[i] = 0.0;  SellBuffer[i] = 0.0;
          ProcessBar(i, time, open, high, low, close, false);
-        }
       g_lastProcessed = time[lastClosed];
       g_lastAlertBar  = time[lastClosed];   // prime: no alert for historical signals
       g_liveMode      = true;
@@ -192,7 +169,6 @@ int OnCalculate(const int rates_total,
      {
       if(time[i] <= g_lastProcessed)
          continue;
-      BuyBuffer[i] = 0.0;  SellBuffer[i] = 0.0;
       bool live = (i == lastClosed);
       ProcessBar(i, time, open, high, low, close, live);
       g_lastProcessed = time[i];
@@ -277,7 +253,7 @@ void ProcessBar(const int i,
             if(risk > 0)
               {
                double tp = entry + InpRR * risk;
-               BuyBuffer[i] = low[i] - off;
+               DrawSignalText(true, time[i], low[i] - off);
                g_longPhase = 2;  g_longCount++;
                EmitSignal(true, time[i], entry, sl, tp, live);
               }
@@ -307,7 +283,7 @@ void ProcessBar(const int i,
             if(risk > 0)
               {
                double tp = entry - InpRR * risk;
-               SellBuffer[i] = high[i] + off;
+               DrawSignalText(false, time[i], high[i] + off);
                g_shortPhase = 2;  g_shortCount++;
                EmitSignal(false, time[i], entry, sl, tp, live);
               }
@@ -374,6 +350,22 @@ void DrawLevel(const string name, datetime t1, double price, datetime t2, const 
   {
    CreateSeg(name, t1, price, t2, price, InpLevelColor, STYLE_DASH, 1);
    CreateTxt(name+"t", t2, price, " "+text, InpLevelColor);
+  }
+//--- print a bold "BUY" / "SELL" label at the signal (replaces the arrows)
+void DrawSignalText(const bool isBuy, const datetime t, const double price)
+  {
+   string name = g_prefix + "TXT_" + (isBuy ? "B_" : "S_") + (string)(long)t;
+   ObjectDelete(0, name);
+   ObjectCreate(0, name, OBJ_TEXT, 0, t, price);
+   ObjectSetString (0, name, OBJPROP_TEXT,     isBuy ? "BUY" : "SELL");
+   ObjectSetString (0, name, OBJPROP_FONT,     InpSignalFont);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, InpSignalFontSize);
+   ObjectSetInteger(0, name, OBJPROP_COLOR,    isBuy ? InpBuyColor : InpSellColor);
+   // BUY sits below the bar (text hangs down), SELL sits above it (text goes up)
+   ObjectSetInteger(0, name, OBJPROP_ANCHOR,   isBuy ? ANCHOR_UPPER : ANCHOR_LOWER);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ChartRedraw(0);
   }
 void DrawZone(datetime t1, double entry, double sl, double tp)
   {

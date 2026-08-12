@@ -1,7 +1,8 @@
 # First Candle Rule — MT5 indicator (`FirstCandleRule.mq5`)
 
 Rebuilt from the **TradersNotes / Jason** video ("the first candle rule"). It is a
-**signal indicator** (arrows + alerts, it does not place trades).
+**signal indicator** — it prints a bold **"BUY" / "SELL"** label on the chart at
+each signal (no arrows) and fires alerts; it does not place trades.
 
 ## The rule it implements
 1. At the session open, take the **first 5-minute candle** (e.g. 9:30–9:35 EST) and
@@ -36,6 +37,8 @@ many brokers run GMT+2/+3, so 9:30 EST is often ~15:30/16:30 server time).
 - `InpRequireGap` (true) — require the wick-gap displacement on the break.
 - `InpAllowLong` / `InpAllowShort`, `InpMaxPerDay` (1 per direction).
 - Alerts: `InpAlertPopup`, `InpAlertSound` (+ sound files), `InpPush`, `InpEmail`.
+- Signal text: `InpSignalFont` (default **Arial Black** = thick), `InpSignalFontSize`,
+  `InpBuyColor` / `InpSellColor`. The label is drawn in CAPS ("BUY" / "SELL").
 
 ## Notes / honesty
 - Signals fire on **closed bars** (no repaint).
