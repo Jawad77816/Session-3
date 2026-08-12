@@ -23,7 +23,7 @@
 //|  XAUUSD.                                                          |
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal Signal"
-#property version   "1.50"
+#property version   "1.60"
 #property strict
 #property description "Three-candle reversal pattern indicator for XAUUSD on M1/M5."
 #property description "Draws arrows and plays a notification sound on each signal."
@@ -74,6 +74,9 @@ input double         InpHammerWickPct  = 0.5;       // Dominant wick >= this fra
 input double         InpHammerHeadPct  = 0.15;      // Opposite wick <= this fraction of range
 input double         InpHammerBodyPct  = 0.4;       // Hammer/star body <= this fraction of range
 input double         InpSolidBodyPct   = 0.5;       // 1st/3rd body >= this fraction (not doji/hammer)
+
+input group    "=== Confirmation ==="
+input bool           InpConfirmCandle  = false;     // Require next candle to confirm (kills mid-trend fakes)
 
 input group    "=== Dashboard ==="
 input bool     InpShowDashboard = true;        // Show on-chart status dashboard
@@ -351,9 +354,10 @@ void DrawDashboard(const int rates_total)
    DashLabel("l2", "Trend   : " + trend, x, y + (n++) * lh, tcol, 9);
 
    DashLabel("l3", "TrendFlt: " + (InpUseTrendFilter ? "ON" : "OFF"), x, y + (n++) * lh, clrWhite, 9);
-   DashLabel("l4", "Rules: Inside=" + (InpMiddleInsideFirst ? "Y" : "N")
+   DashLabel("l4", "Rules: In=" + (InpMiddleInsideFirst ? "Y" : "N")
                  + " Solid=" + (InpRequireSolidOuter ? "Y" : "N")
-                 + " Pin=" + (InpUseShapeFilter ? "Y" : "N"),
+                 + " Pin=" + (InpUseShapeFilter ? "Y" : "N")
+                 + " Cnf=" + (InpConfirmCandle ? "Y" : "N"),
              x, y + (n++) * lh, clrWhite, 9);
 
    color  scol  = (g_lastSignal == "BUY" ? clrLime : (g_lastSignal == "SELL" ? clrTomato : clrSilver));
@@ -435,10 +439,11 @@ string DiagnoseBar(const int sig, const int rates_total, const bool maReady,
                    const double &open[], const double &high[],
                    const double &low[],  const double &close[])
   {
-   if(sig < 2)
+   int off = InpConfirmCandle ? 1 : 0;
+   if(sig < 2 + off)
       return("warming up");
 
-   int i1 = sig - 2, i2 = sig - 1, i3 = sig;   // first, middle, third
+   int i1 = sig - 2 - off, i2 = sig - 1 - off, i3 = sig - off;  // first, middle, third
    double o1 = open[i1], c1 = close[i1], h1 = high[i1], l1 = low[i1];
    double o2 = open[i2], c2 = close[i2], h2 = high[i2], l2 = low[i2];
    double o3 = open[i3], c3 = close[i3], h3 = high[i3], l3 = low[i3];
@@ -457,7 +462,8 @@ string DiagnoseBar(const int sig, const int rates_total, const bool maReady,
       if(InpRequireSolidOuter && !IsSolidCandle(o1, h1, l1, c1))    return("BUY blocked: 1st candle not solid");
       if(InpRequireSolidOuter && !IsSolidCandle(o3, h3, l3, c3))    return("BUY blocked: 3rd candle not solid");
       if(InpMiddleInsideFirst && !MiddleBodyInsideFirst(o2, c2, o1, c1)) return("BUY blocked: middle body not inside 1st");
-      if(!TrendFilterOK(true, sig, rates_total, high, low, maReady))return("BUY blocked: trend/swing filter");
+      if(off == 1 && !(close[sig] > open[sig]))                     return("BUY blocked: confirmation candle not bullish");
+      if(!TrendFilterOK(true, i3, rates_total, high, low, maReady)) return("BUY blocked: trend/swing filter");
       return("BUY signal");
      }
    if(sellSkel && InpEnableSell)
@@ -468,7 +474,8 @@ string DiagnoseBar(const int sig, const int rates_total, const bool maReady,
       if(InpRequireSolidOuter && !IsSolidCandle(o1, h1, l1, c1))    return("SELL blocked: 1st candle not solid");
       if(InpRequireSolidOuter && !IsSolidCandle(o3, h3, l3, c3))    return("SELL blocked: 3rd candle not solid");
       if(InpMiddleInsideFirst && !MiddleBodyInsideFirst(o2, c2, o1, c1)) return("SELL blocked: middle body not inside 1st");
-      if(!TrendFilterOK(false, sig, rates_total, high, low, maReady))return("SELL blocked: trend/swing filter");
+      if(off == 1 && !(close[sig] < open[sig]))                     return("SELL blocked: confirmation candle not bearish");
+      if(!TrendFilterOK(false, i3, rates_total, high, low, maReady))return("SELL blocked: trend/swing filter");
       return("SELL signal");
      }
    return("setup disabled (buy/sell off)");
@@ -506,17 +513,21 @@ int OnCalculate(const int        rates_total,
      }
    g_maReady = maReady;
 
+   // Confirmation shifts the pattern back one bar: bar i becomes the
+   // confirmation candle and the 3-candle pattern sits on i-2-off..i-off.
+   int off = InpConfirmCandle ? 1 : 0;
+
    // Determine where to (re)start computing.
    int start;
    if(prev_calculated == 0)
      {
       ArrayInitialize(BuyBuffer,  EMPTY_VALUE);
       ArrayInitialize(SellBuffer, EMPTY_VALUE);
-      start = 2;
+      start = 2 + off;
      }
    else
       start = prev_calculated - 1;   // recompute the last (now closed) bar
-   if(start < 2) start = 2;
+   if(start < 2 + off) start = 2 + off;
 
    for(int i = start; i <= rates_total - 1; i++)
      {
@@ -527,10 +538,17 @@ int OnCalculate(const int        rates_total,
       if(i > rates_total - 2)
          continue;
 
-      // first = i-2, middle = i-1, third(signal) = i
-      double o1 = open[i-2],  c1 = close[i-2], h1 = high[i-2], l1 = low[i-2]; // first
-      double o2 = open[i-1],  c2 = close[i-1], h2 = high[i-1], l2 = low[i-1]; // middle
-      double o3 = open[i],    c3 = close[i],   h3 = high[i],   l3 = low[i];   // third
+      // Pattern candles (shifted back by 'off' when confirmation is on).
+      // bar i is the confirmation candle when off == 1, else the 3rd candle.
+      int fi = i - 2 - off;   // first
+      int mi = i - 1 - off;   // middle
+      int ti = i - off;       // third (pattern end)
+      if(fi < 0)
+         continue;
+
+      double o1 = open[fi], c1 = close[fi], h1 = high[fi], l1 = low[fi]; // first
+      double o2 = open[mi], c2 = close[mi], h2 = high[mi], l2 = low[mi]; // middle
+      double o3 = open[ti], c3 = close[ti], h3 = high[ti], l3 = low[ti]; // third
 
       // --- BUY: red -> green -> green -------------------------------
       if(InpEnableBuy)
@@ -544,10 +562,12 @@ int OnCalculate(const int        rates_total,
          // Middle body must sit inside the first candle's body
          // (its lower wick still pokes below first low via middleLowLowest).
          bool insideOK    = (!InpMiddleInsideFirst) || MiddleBodyInsideFirst(o2, c2, o1, c1);
-         if(colorsOK && middleLowLowest && bodyEngulfHigh && middlePinOK && solidOK && insideOK &&
-            TrendFilterOK(true, i, rates_total, high, low, maReady))
+         // Confirmation candle (bar i) must close bullish.
+         bool confirmOK   = (off == 0) || (close[i] > open[i]);
+         if(colorsOK && middleLowLowest && bodyEngulfHigh && middlePinOK && solidOK && insideOK && confirmOK &&
+            TrendFilterOK(true, ti, rates_total, high, low, maReady))
            {
-            BuyBuffer[i] = l3 - gap;
+            BuyBuffer[i] = low[i] - gap;
             continue;
            }
         }
@@ -564,10 +584,12 @@ int OnCalculate(const int        rates_total,
          // Middle body must sit inside the first candle's body
          // (its upper wick still pokes above first high via middleHighHighest).
          bool insideOK    = (!InpMiddleInsideFirst) || MiddleBodyInsideFirst(o2, c2, o1, c1);
-         if(colorsOK && middleHighHighest && bodyEngulfLow && middlePinOK && solidOK && insideOK &&
-            TrendFilterOK(false, i, rates_total, high, low, maReady))
+         // Confirmation candle (bar i) must close bearish.
+         bool confirmOK   = (off == 0) || (close[i] < open[i]);
+         if(colorsOK && middleHighHighest && bodyEngulfLow && middlePinOK && solidOK && insideOK && confirmOK &&
+            TrendFilterOK(false, ti, rates_total, high, low, maReady))
            {
-            SellBuffer[i] = h3 + gap;
+            SellBuffer[i] = high[i] + gap;
            }
         }
      }
