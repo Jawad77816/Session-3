@@ -23,7 +23,7 @@
 //|  XAUUSD.                                                          |
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal Signal"
-#property version   "1.40"
+#property version   "1.50"
 #property strict
 #property description "Three-candle reversal pattern indicator for XAUUSD on M1/M5."
 #property description "Draws arrows and plays a notification sound on each signal."
@@ -67,12 +67,13 @@ input ENUM_MA_METHOD InpMAMethod       = MODE_EMA;  // Trend MA method
 input int            InpMASlopeBars    = 5;         // Bars used to measure MA slope
 
 input group    "=== Candle Shape Filter ==="
-input bool           InpUseShapeFilter = true;      // Require hammer/star middle + solid 1st/3rd
+input bool           InpRequireSolidOuter = true;   // 1st & 3rd must be solid (not doji/hammer/star)
+input bool           InpMiddleInsideFirst = true;   // Middle body must sit inside the 1st candle's body
+input bool           InpUseShapeFilter = false;     // ALSO require strict hammer/star wick ratios (stricter)
 input double         InpHammerWickPct  = 0.5;       // Dominant wick >= this fraction of range
 input double         InpHammerHeadPct  = 0.15;      // Opposite wick <= this fraction of range
 input double         InpHammerBodyPct  = 0.4;       // Hammer/star body <= this fraction of range
 input double         InpSolidBodyPct   = 0.5;       // 1st/3rd body >= this fraction (not doji/hammer)
-input bool           InpMiddleInsideFirst = true;   // Middle body must sit inside the 1st candle's body
 
 input group    "=== Dashboard ==="
 input bool     InpShowDashboard = true;        // Show on-chart status dashboard
@@ -350,7 +351,10 @@ void DrawDashboard(const int rates_total)
    DashLabel("l2", "Trend   : " + trend, x, y + (n++) * lh, tcol, 9);
 
    DashLabel("l3", "TrendFlt: " + (InpUseTrendFilter ? "ON" : "OFF"), x, y + (n++) * lh, clrWhite, 9);
-   DashLabel("l4", "ShapeFlt: " + (InpUseShapeFilter ? "ON" : "OFF"), x, y + (n++) * lh, clrWhite, 9);
+   DashLabel("l4", "Rules: Inside=" + (InpMiddleInsideFirst ? "Y" : "N")
+                 + " Solid=" + (InpRequireSolidOuter ? "Y" : "N")
+                 + " Pin=" + (InpUseShapeFilter ? "Y" : "N"),
+             x, y + (n++) * lh, clrWhite, 9);
 
    color  scol  = (g_lastSignal == "BUY" ? clrLime : (g_lastSignal == "SELL" ? clrTomato : clrSilver));
    string sigtm = (g_lastSignalTm > 0 ? TimeToString(g_lastSignalTm, TIME_MINUTES) : "-");
@@ -450,8 +454,8 @@ string DiagnoseBar(const int sig, const int rates_total, const bool maReady,
       if(!((l2 < l1) && (l2 < l3)))                                 return("BUY blocked: middle not lowest low");
       if(!(c3 > h1))                                                return("BUY blocked: 3rd body doesn't engulf 1st high");
       if(InpUseShapeFilter && !IsHammerShape(o2, h2, l2, c2))       return("BUY blocked: middle not a hammer");
-      if(InpUseShapeFilter && !IsSolidCandle(o1, h1, l1, c1))       return("BUY blocked: 1st candle not solid");
-      if(InpUseShapeFilter && !IsSolidCandle(o3, h3, l3, c3))       return("BUY blocked: 3rd candle not solid");
+      if(InpRequireSolidOuter && !IsSolidCandle(o1, h1, l1, c1))    return("BUY blocked: 1st candle not solid");
+      if(InpRequireSolidOuter && !IsSolidCandle(o3, h3, l3, c3))    return("BUY blocked: 3rd candle not solid");
       if(InpMiddleInsideFirst && !MiddleBodyInsideFirst(o2, c2, o1, c1)) return("BUY blocked: middle body not inside 1st");
       if(!TrendFilterOK(true, sig, rates_total, high, low, maReady))return("BUY blocked: trend/swing filter");
       return("BUY signal");
@@ -461,8 +465,8 @@ string DiagnoseBar(const int sig, const int rates_total, const bool maReady,
       if(!((h2 > h1) && (h2 > h3)))                                 return("SELL blocked: middle not highest high");
       if(!(c3 < l1))                                                return("SELL blocked: 3rd body doesn't engulf 1st low");
       if(InpUseShapeFilter && !IsStarShape(o2, h2, l2, c2))         return("SELL blocked: middle not a shooting star");
-      if(InpUseShapeFilter && !IsSolidCandle(o1, h1, l1, c1))       return("SELL blocked: 1st candle not solid");
-      if(InpUseShapeFilter && !IsSolidCandle(o3, h3, l3, c3))       return("SELL blocked: 3rd candle not solid");
+      if(InpRequireSolidOuter && !IsSolidCandle(o1, h1, l1, c1))    return("SELL blocked: 1st candle not solid");
+      if(InpRequireSolidOuter && !IsSolidCandle(o3, h3, l3, c3))    return("SELL blocked: 3rd candle not solid");
       if(InpMiddleInsideFirst && !MiddleBodyInsideFirst(o2, c2, o1, c1)) return("SELL blocked: middle body not inside 1st");
       if(!TrendFilterOK(false, sig, rates_total, high, low, maReady))return("SELL blocked: trend/swing filter");
       return("SELL signal");
@@ -534,15 +538,13 @@ int OnCalculate(const int        rates_total,
          bool colorsOK        = IsBear(o1, c1) && IsBull(o2, c2) && IsBull(o3, c3);
          bool middleLowLowest = (l2 < l1) && (l2 < l3);
          bool bodyEngulfHigh  = (c3 > h1);   // green body top = close
-         bool shapeOK = true;
-         if(InpUseShapeFilter)
-            shapeOK = IsHammerShape(o2, h2, l2, c2)   // middle = hammer
-                   && IsSolidCandle(o1, h1, l1, c1)    // first  = solid
-                   && IsSolidCandle(o3, h3, l3, c3);   // third  = solid
-         // NEW: middle body must sit inside the first candle's body
+         bool middlePinOK = (!InpUseShapeFilter) || IsHammerShape(o2, h2, l2, c2);
+         bool solidOK     = (!InpRequireSolidOuter) ||
+                            (IsSolidCandle(o1, h1, l1, c1) && IsSolidCandle(o3, h3, l3, c3));
+         // Middle body must sit inside the first candle's body
          // (its lower wick still pokes below first low via middleLowLowest).
-         bool insideOK = (!InpMiddleInsideFirst) || MiddleBodyInsideFirst(o2, c2, o1, c1);
-         if(colorsOK && middleLowLowest && bodyEngulfHigh && shapeOK && insideOK &&
+         bool insideOK    = (!InpMiddleInsideFirst) || MiddleBodyInsideFirst(o2, c2, o1, c1);
+         if(colorsOK && middleLowLowest && bodyEngulfHigh && middlePinOK && solidOK && insideOK &&
             TrendFilterOK(true, i, rates_total, high, low, maReady))
            {
             BuyBuffer[i] = l3 - gap;
@@ -556,15 +558,13 @@ int OnCalculate(const int        rates_total,
          bool colorsOK          = IsBull(o1, c1) && IsBear(o2, c2) && IsBear(o3, c3);
          bool middleHighHighest = (h2 > h1) && (h2 > h3);
          bool bodyEngulfLow     = (c3 < l1);  // red body bottom = close
-         bool shapeOK = true;
-         if(InpUseShapeFilter)
-            shapeOK = IsStarShape(o2, h2, l2, c2)     // middle = shooting star
-                   && IsSolidCandle(o1, h1, l1, c1)    // first  = solid
-                   && IsSolidCandle(o3, h3, l3, c3);   // third  = solid
-         // NEW: middle body must sit inside the first candle's body
+         bool middlePinOK = (!InpUseShapeFilter) || IsStarShape(o2, h2, l2, c2);
+         bool solidOK     = (!InpRequireSolidOuter) ||
+                            (IsSolidCandle(o1, h1, l1, c1) && IsSolidCandle(o3, h3, l3, c3));
+         // Middle body must sit inside the first candle's body
          // (its upper wick still pokes above first high via middleHighHighest).
-         bool insideOK = (!InpMiddleInsideFirst) || MiddleBodyInsideFirst(o2, c2, o1, c1);
-         if(colorsOK && middleHighHighest && bodyEngulfLow && shapeOK && insideOK &&
+         bool insideOK    = (!InpMiddleInsideFirst) || MiddleBodyInsideFirst(o2, c2, o1, c1);
+         if(colorsOK && middleHighHighest && bodyEngulfLow && middlePinOK && solidOK && insideOK &&
             TrendFilterOK(false, i, rates_total, high, low, maReady))
            {
             SellBuffer[i] = h3 + gap;
