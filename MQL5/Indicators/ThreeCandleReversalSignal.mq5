@@ -23,7 +23,7 @@
 //|  XAUUSD.                                                          |
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal Signal"
-#property version   "1.60"
+#property version   "1.70"
 #property strict
 #property description "Three-candle reversal pattern indicator for XAUUSD on M1/M5."
 #property description "Draws arrows and plays a notification sound on each signal."
@@ -42,6 +42,15 @@
 #property indicator_type2   DRAW_ARROW
 #property indicator_color2  clrRed
 #property indicator_width2  2
+
+//+------------------------------------------------------------------+
+//| Enums                                                            |
+//+------------------------------------------------------------------+
+enum ENUM_RSI_MODE
+  {
+   RSI_DIVERGENCE = 0,   // Momentum divergence (best quality filter)
+   RSI_THRESHOLD  = 1    // Overbought/oversold threshold
+  };
 
 //+------------------------------------------------------------------+
 //| Inputs                                                           |
@@ -78,6 +87,13 @@ input double         InpSolidBodyPct   = 0.5;       // 1st/3rd body >= this frac
 input group    "=== Confirmation ==="
 input bool           InpConfirmCandle  = false;     // Require next candle to confirm (kills mid-trend fakes)
 
+input group    "=== Momentum / RSI Quality Filter ==="
+input bool           InpUseRSIFilter   = true;      // Filter by RSI momentum (quality)
+input ENUM_RSI_MODE  InpRSIMode        = RSI_DIVERGENCE; // Divergence (recommended) or Threshold
+input int            InpRSIPeriod      = 14;        // RSI period
+input double         InpRSIOverbought  = 70.0;      // Threshold mode: sell needs RSI >= this
+input double         InpRSIOversold    = 30.0;      // Threshold mode: buy needs RSI <= this
+
 input group    "=== Dashboard ==="
 input bool     InpShowDashboard = true;        // Show on-chart status dashboard
 input int      InpDashX         = 12;          // Dashboard X offset (px)
@@ -103,6 +119,9 @@ datetime g_lastAlertBar = 0;       // time of the last evaluated closed bar
 int      g_maHandle     = INVALID_HANDLE;  // trend MA indicator handle
 double   g_maArr[];                // MA values aligned to the price series
 bool     g_maReady      = false;   // MA buffer valid this calculation
+int      g_rsiHandle    = INVALID_HANDLE;  // RSI indicator handle
+double   g_rsiArr[];               // RSI values aligned to the price series
+bool     g_rsiReady     = false;   // RSI buffer valid this calculation
 string   g_lastSignal   = "None";  // last signal (dashboard)
 datetime g_lastSignalTm = 0;       // time of last signal
 string   g_lastCheck    = "-";     // why the last closed bar had no signal (diagnostics)
@@ -253,6 +272,15 @@ int OnInit()
          Print("WARNING: failed to create MA handle - MA trend filter disabled.");
      }
 
+   // --- RSI handle ---
+   ArraySetAsSeries(g_rsiArr, false);
+   if(InpUseRSIFilter && InpRSIPeriod > 0)
+     {
+      g_rsiHandle = iRSI(_Symbol, _Period, InpRSIPeriod, PRICE_CLOSE);
+      if(g_rsiHandle == INVALID_HANDLE)
+         Print("WARNING: failed to create RSI handle - RSI filter disabled.");
+     }
+
    return(INIT_SUCCEEDED);
   }
 
@@ -263,6 +291,8 @@ void OnDeinit(const int reason)
   {
    if(g_maHandle != INVALID_HANDLE)
       IndicatorRelease(g_maHandle);
+   if(g_rsiHandle != INVALID_HANDLE)
+      IndicatorRelease(g_rsiHandle);
    ObjectsDeleteAll(0, DASH_PREFIX);
    Comment("");
    ChartRedraw(0);
@@ -354,10 +384,12 @@ void DrawDashboard(const int rates_total)
    DashLabel("l2", "Trend   : " + trend, x, y + (n++) * lh, tcol, 9);
 
    DashLabel("l3", "TrendFlt: " + (InpUseTrendFilter ? "ON" : "OFF"), x, y + (n++) * lh, clrWhite, 9);
+   string rsiStr = (!InpUseRSIFilter ? "N" : (InpRSIMode == RSI_DIVERGENCE ? "Div" : "Thr"));
    DashLabel("l4", "Rules: In=" + (InpMiddleInsideFirst ? "Y" : "N")
                  + " Solid=" + (InpRequireSolidOuter ? "Y" : "N")
                  + " Pin=" + (InpUseShapeFilter ? "Y" : "N")
-                 + " Cnf=" + (InpConfirmCandle ? "Y" : "N"),
+                 + " Cnf=" + (InpConfirmCandle ? "Y" : "N")
+                 + " RSI=" + rsiStr,
              x, y + (n++) * lh, clrWhite, 9);
 
    color  scol  = (g_lastSignal == "BUY" ? clrLime : (g_lastSignal == "SELL" ? clrTomato : clrSilver));
@@ -432,6 +464,56 @@ bool TrendFilterOK(const bool isBuy, const int i, const int rates_total,
   }
 
 //+------------------------------------------------------------------+
+//| RSI momentum quality filter                                      |
+//|   mi = middle candle (the price extreme), ti = pattern end        |
+//|   Divergence: price makes the swing extreme but RSI does NOT      |
+//|               make the matching RSI extreme -> exhaustion.        |
+//|   Threshold : RSI overbought (sell) / oversold (buy).            |
+//+------------------------------------------------------------------+
+bool RsiOK(const bool isBuy, const int mi, const int ti)
+  {
+   if(!InpUseRSIFilter)
+      return(true);
+   if(!g_rsiReady || g_rsiHandle == INVALID_HANDLE)
+      return(true);           // RSI not ready -> don't block
+   if(mi < 0 || ti < 0)
+      return(true);
+
+   double rMid = g_rsiArr[mi];
+   if(rMid <= 0.0)
+      return(true);           // warmup value -> don't block
+
+   if(InpRSIMode == RSI_THRESHOLD)
+     {
+      if(isBuy)  return(rMid <= InpRSIOversold);
+      else       return(rMid >= InpRSIOverbought);
+     }
+
+   // --- Divergence mode ---
+   // The swing filter already guarantees the middle candle is the price
+   // extreme of the window, so if RSI is NOT also the extreme, we have
+   // divergence (an earlier bar had a stronger RSI at a weaker price).
+   int look   = (InpSwingLookback > 0 ? InpSwingLookback : 12);
+   int wStart = ti - look + 1;
+   if(wStart < 0) wStart = 0;
+
+   if(isBuy)
+     {
+      double minR = rMid;
+      for(int k = wStart; k <= ti; k++)
+         if(g_rsiArr[k] > 0.0 && g_rsiArr[k] < minR) minR = g_rsiArr[k];
+      return(rMid > minR + 0.001);   // bullish divergence: RSI higher low
+     }
+   else
+     {
+      double maxR = rMid;
+      for(int k = wStart; k <= ti; k++)
+         if(g_rsiArr[k] > maxR) maxR = g_rsiArr[k];
+      return(rMid < maxR - 0.001);   // bearish divergence: RSI lower high
+     }
+  }
+
+//+------------------------------------------------------------------+
 //| Diagnose the last CLOSED bar: which rule stopped a signal?       |
 //|   Returns a short human-readable reason for the dashboard/log.   |
 //+------------------------------------------------------------------+
@@ -463,6 +545,7 @@ string DiagnoseBar(const int sig, const int rates_total, const bool maReady,
       if(InpRequireSolidOuter && !IsSolidCandle(o3, h3, l3, c3))    return("BUY blocked: 3rd candle not solid");
       if(InpMiddleInsideFirst && !MiddleBodyInsideFirst(o2, c2, o1, c1)) return("BUY blocked: middle body not inside 1st");
       if(off == 1 && !(close[sig] > open[sig]))                     return("BUY blocked: confirmation candle not bullish");
+      if(!RsiOK(true, i2, i3))                                      return("BUY blocked: no bullish RSI momentum");
       if(!TrendFilterOK(true, i3, rates_total, high, low, maReady)) return("BUY blocked: trend/swing filter");
       return("BUY signal");
      }
@@ -475,6 +558,7 @@ string DiagnoseBar(const int sig, const int rates_total, const bool maReady,
       if(InpRequireSolidOuter && !IsSolidCandle(o3, h3, l3, c3))    return("SELL blocked: 3rd candle not solid");
       if(InpMiddleInsideFirst && !MiddleBodyInsideFirst(o2, c2, o1, c1)) return("SELL blocked: middle body not inside 1st");
       if(off == 1 && !(close[sig] < open[sig]))                     return("SELL blocked: confirmation candle not bearish");
+      if(!RsiOK(false, i2, i3))                                     return("SELL blocked: no bearish RSI momentum");
       if(!TrendFilterOK(false, i3, rates_total, high, low, maReady))return("SELL blocked: trend/swing filter");
       return("SELL signal");
      }
@@ -512,6 +596,14 @@ int OnCalculate(const int        rates_total,
          maReady = true;
      }
    g_maReady = maReady;
+
+   // Refresh RSI values aligned to the price series.
+   g_rsiReady = false;
+   if(InpUseRSIFilter && g_rsiHandle != INVALID_HANDLE)
+     {
+      if(CopyBuffer(g_rsiHandle, 0, 0, rates_total, g_rsiArr) == rates_total)
+         g_rsiReady = true;
+     }
 
    // Confirmation shifts the pattern back one bar: bar i becomes the
    // confirmation candle and the 3-candle pattern sits on i-2-off..i-off.
@@ -565,6 +657,7 @@ int OnCalculate(const int        rates_total,
          // Confirmation candle (bar i) must close bullish.
          bool confirmOK   = (off == 0) || (close[i] > open[i]);
          if(colorsOK && middleLowLowest && bodyEngulfHigh && middlePinOK && solidOK && insideOK && confirmOK &&
+            RsiOK(true, mi, ti) &&
             TrendFilterOK(true, ti, rates_total, high, low, maReady))
            {
             BuyBuffer[i] = low[i] - gap;
@@ -587,6 +680,7 @@ int OnCalculate(const int        rates_total,
          // Confirmation candle (bar i) must close bearish.
          bool confirmOK   = (off == 0) || (close[i] < open[i]);
          if(colorsOK && middleHighHighest && bodyEngulfLow && middlePinOK && solidOK && insideOK && confirmOK &&
+            RsiOK(false, mi, ti) &&
             TrendFilterOK(false, ti, rates_total, high, low, maReady))
            {
             SellBuffer[i] = high[i] + gap;
