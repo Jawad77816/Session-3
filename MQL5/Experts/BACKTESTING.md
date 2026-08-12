@@ -30,9 +30,17 @@ inputs:
 | Input | Meaning |
 |-------|---------|
 | `InpLotSize` | Lot size per trade |
-| `InpTakeProfit` / `InpStopLoss` | Fixed TP/SL in USD price move ($1 = 1.00 on gold) |
-| `InpUseTrailing` + `InpTrailStartUSD` / `InpTrailGapUSD` | Tight trailing stop |
+| `InpAutoSLTP` | **On (default):** SL = middle candle's low (buy) / high (sell); TP = `InpRewardRatio` × that risk |
+| `InpRewardRatio` | Reward:risk multiple — `3` for 1:3, `4` for 1:4 |
+| `InpSLBufferUSD` | Extra distance beyond the middle candle wick for the SL |
+| `InpTakeProfit` / `InpStopLoss` | Fixed TP/SL in USD — used only when `InpAutoSLTP = false` |
+| `InpUseTrailing` + `InpTrailStartUSD` / `InpTrailGapUSD` | Tight trailing stop (off by default; interferes with a fixed R:R target) |
 | `InpUseRSIFilter`, `InpRSIMode`, `InpSwingLookback`, … | Same filters as the indicator |
+
+**Auto SL/TP:** with `InpAutoSLTP = true`, each trade's stop is placed at the
+middle (pin) candle's extreme and the target is a fixed multiple of that risk —
+so a $0.80 risk with `InpRewardRatio = 3` gives a $2.40 target (1:3). Keep
+trailing **off** for a clean R:R test.
 
 Changing a strategy input here changes what the loaded indicator computes, so
 the backtest always reflects your current configuration.

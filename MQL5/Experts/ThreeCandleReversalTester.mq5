@@ -14,9 +14,10 @@
 //|   - Run the tester on XAUUSD, M1 or M5.                          |
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal Tester"
-#property version   "1.00"
+#property version   "1.10"
 #property strict
-#property description "Backtests the ThreeCandleReversalSignal indicator by trading its arrows."
+#property description "Backtests/trades the ThreeCandleReversalSignal indicator's arrows"
+#property description "with candle-based auto SL and reward:risk TP."
 
 #include <Trade/Trade.mqh>
 
@@ -32,15 +33,20 @@ enum ENUM_RSI_MODE
 //+------------------------------------------------------------------+
 input group    "=== Trading ==="
 input double   InpLotSize        = 0.01;        // Fixed lot size
-input double   InpTakeProfit     = 1.0;         // Take Profit (USD price move)
-input double   InpStopLoss       = 1.0;         // Stop Loss  (USD price move)
 input int      InpMaxPositions   = 1;           // Max simultaneous positions
 input double   InpMaxSpreadUSD   = 0.0;         // Max spread in USD (0 = off)
 input long     InpMagicNumber    = 20250811;    // Magic number
 input int      InpDeviationPts   = 30;          // Max deviation (points)
 
+input group    "=== Auto SL/TP (candle-based) ==="
+input bool     InpAutoSLTP       = true;        // Auto SL from middle candle, TP = ratio x risk
+input double   InpRewardRatio    = 3.0;         // Reward:risk ratio (e.g. 3 for 1:3, 4 for 1:4)
+input double   InpSLBufferUSD    = 0.0;         // Extra buffer beyond the middle candle wick (USD)
+input double   InpTakeProfit     = 1.0;         // Fixed TP (USD) - used only when AutoSLTP = false
+input double   InpStopLoss       = 1.0;         // Fixed SL (USD) - used only when AutoSLTP = false
+
 input group    "=== Trailing Stop (fixed USD) ==="
-input bool     InpUseTrailing    = true;        // Enable tight trailing stop
+input bool     InpUseTrailing    = false;       // Tight trailing (off: let R:R TP run)
 input double   InpTrailStartUSD   = 0.5;        // Start trailing after this profit (USD)
 input double   InpTrailGapUSD      = 0.1;       // Trail distance behind price (USD)
 input double   InpTrailStepUSD     = 0.0;       // Min SL move before updating (USD)
@@ -253,28 +259,79 @@ double ClampStop(double d)
   }
 
 //+------------------------------------------------------------------+
+//| Resolve SL/TP distances (price units) for a trade                |
+//|   Auto mode: SL = middle-candle low (buy) / high (sell),          |
+//|              TP = InpRewardRatio x that risk distance.           |
+//|   Fixed mode: InpStopLoss / InpTakeProfit in USD.               |
+//|   Returns false if the geometry is invalid (skip the trade).    |
+//+------------------------------------------------------------------+
+bool ResolveSLTP(const int dir, const double price, double &slDist, double &tpDist)
+  {
+   if(InpAutoSLTP)
+     {
+      // The arrow sits on the last closed bar (shift 1). The middle candle
+      // is 2 bars before it, or 3 bars when confirmation shifts it back.
+      int midShift = (InpConfirmCandle ? 3 : 2);
+      double midLow  = iLow (_Symbol, _Period, midShift);
+      double midHigh = iHigh(_Symbol, _Period, midShift);
+      if(midLow <= 0.0 || midHigh <= 0.0)
+         return(false);
+
+      if(dir > 0)  // BUY: SL below the middle candle low
+        {
+         double slPrice = midLow - InpSLBufferUSD;
+         slDist = price - slPrice;
+        }
+      else         // SELL: SL above the middle candle high
+        {
+         double slPrice = midHigh + InpSLBufferUSD;
+         slDist = slPrice - price;
+        }
+
+      if(slDist <= 0.0)
+        {
+         PrintFormat("AutoSLTP: invalid risk distance (%.*f) - trade skipped.", g_symDigits, slDist);
+         return(false);
+        }
+      slDist = ClampStop(slDist);
+      tpDist = slDist * InpRewardRatio;
+     }
+   else
+     {
+      slDist = ClampStop(InpStopLoss);
+      tpDist = ClampStop(InpTakeProfit);
+     }
+   return(true);
+  }
+
+//+------------------------------------------------------------------+
 //| Open a trade (+1 buy, -1 sell)                                   |
 //+------------------------------------------------------------------+
 void OpenTrade(const int dir)
   {
-   double tp = ClampStop(InpTakeProfit);
-   double sl = ClampStop(InpStopLoss);
-   double price, slp, tpp;
+   double price = (dir > 0 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK)
+                           : SymbolInfoDouble(_Symbol, SYMBOL_BID));
+   double slDist, tpDist;
+   if(!ResolveSLTP(dir, price, slDist, tpDist))
+      return;
 
+   double slp, tpp;
    if(dir > 0)
      {
-      price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-      slp = NormalizeDouble(price - sl, g_symDigits);
-      tpp = NormalizeDouble(price + tp, g_symDigits);
+      slp = NormalizeDouble(price - slDist, g_symDigits);
+      tpp = NormalizeDouble(price + tpDist, g_symDigits);
       trade.Buy(InpLotSize, _Symbol, price, slp, tpp, "3CandleTest");
      }
    else
      {
-      price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-      slp = NormalizeDouble(price + sl, g_symDigits);
-      tpp = NormalizeDouble(price - tp, g_symDigits);
+      slp = NormalizeDouble(price + slDist, g_symDigits);
+      tpp = NormalizeDouble(price - tpDist, g_symDigits);
       trade.Sell(InpLotSize, _Symbol, price, slp, tpp, "3CandleTest");
      }
+   PrintFormat("%s @ %.*f  SL=%.*f  TP=%.*f  (risk=%.*f R:R=1:%.1f)",
+               (dir > 0 ? "BUY" : "SELL"), g_symDigits, price,
+               g_symDigits, slp, g_symDigits, tpp,
+               g_symDigits, slDist, (InpAutoSLTP ? InpRewardRatio : tpDist / MathMax(slDist, _Point)));
   }
 
 //+------------------------------------------------------------------+
