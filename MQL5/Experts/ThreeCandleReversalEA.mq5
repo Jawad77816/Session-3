@@ -15,10 +15,10 @@
 //|  Auto SL/TP: SL at the middle candle's extreme, TP = ratio x risk|
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal EA"
-#property version   "2.00"
+#property version   "2.10"
 #property strict
-#property description "Self-contained three-candle reversal EA for XAUUSD M1/M5"
-#property description "with trend + RSI filters, candle-based auto SL and R:R TP."
+#property description "Self-contained three-candle reversal EA for XAUUSD M1/M5 with trend"
+#property description "+ RSI filters, candle-based auto SL/RR TP, risk-% sizing and max-SL cap."
 
 #include <Trade/Trade.mqh>
 
@@ -44,6 +44,11 @@ input double   InpRewardRatio    = 3.0;         // Reward:risk ratio (3 for 1:3,
 input double   InpSLBufferUSD    = 0.0;         // Extra buffer beyond the middle candle wick (USD)
 input double   InpTakeProfit     = 1.0;         // Fixed TP (USD) - used only when AutoSLTP = false
 input double   InpStopLoss       = 1.0;         // Fixed SL (USD) - used only when AutoSLTP = false
+
+input group    "=== Risk Management ==="
+input bool     InpUseRiskSizing  = true;        // Size lot by % risk (else fixed InpLotSize)
+input double   InpRiskPercent    = 1.0;         // Risk this % of balance per trade
+input double   InpMaxSLUSD       = 10.0;        // Skip signals whose SL is wider than this (USD, 0=off)
 
 input group    "=== Trailing Stop (fixed USD) ==="
 input bool     InpUseTrailing    = false;       // Tight trailing (off: let R:R TP run)
@@ -327,28 +332,69 @@ void NotifyEntry(const int dir, const double price)
    if(InpEnablePush)  SendNotification(msg);
   }
 
+//+------------------------------------------------------------------+
+//| Normalise a lot to the broker's min/max/step                     |
+//+------------------------------------------------------------------+
+double NormalizeLot(double lot)
+  {
+   double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   double maxLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+   double step   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   if(step <= 0.0) step = 0.01;
+   lot = MathFloor(lot / step) * step;
+   if(lot < minLot) lot = minLot;
+   if(lot > maxLot) lot = maxLot;
+   return(lot);
+  }
+
+//+------------------------------------------------------------------+
+//| Lot size for a trade: risk % of balance over the SL distance     |
+//+------------------------------------------------------------------+
+double CalcLot(const double slDist)
+  {
+   if(!InpUseRiskSizing) return(NormalizeLot(InpLotSize));
+   double tickVal  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+   double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+   if(tickSize <= 0.0 || tickVal <= 0.0 || slDist <= 0.0) return(NormalizeLot(InpLotSize));
+   double riskAmt     = AccountInfoDouble(ACCOUNT_BALANCE) * InpRiskPercent / 100.0;
+   double lossPerLot  = slDist / tickSize * tickVal;      // money lost per 1.0 lot if SL hit
+   if(lossPerLot <= 0.0) return(NormalizeLot(InpLotSize));
+   return(NormalizeLot(riskAmt / lossPerLot));
+  }
+
 void OpenTrade(const int dir)
   {
    double price = (dir > 0 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID));
    double slDist, tpDist;
    if(!ResolveSLTP(dir, price, slDist, tpDist)) return;
 
+   // Max-SL cap: refuse trades whose candle-based stop is too wide (the
+   // blow-up trades in Jan 2026 had SL distances of $30-$82).
+   if(InpMaxSLUSD > 0.0 && slDist > InpMaxSLUSD)
+     {
+      PrintFormat("Skip %s: SL %.2f USD exceeds max %.2f", (dir > 0 ? "BUY" : "SELL"), slDist, InpMaxSLUSD);
+      return;
+     }
+
+   double lot = CalcLot(slDist);
+   if(lot <= 0.0) { Print("Skip: computed lot <= 0"); return; }
+
    double slp, tpp; bool ok;
    if(dir > 0)
      {
       slp = NormalizeDouble(price - slDist, g_symDigits);
       tpp = NormalizeDouble(price + tpDist, g_symDigits);
-      ok = trade.Buy(InpLotSize, _Symbol, price, slp, tpp, "3CandleEA");
+      ok = trade.Buy(lot, _Symbol, price, slp, tpp, "3CandleEA");
      }
    else
      {
       slp = NormalizeDouble(price + slDist, g_symDigits);
       tpp = NormalizeDouble(price - tpDist, g_symDigits);
-      ok = trade.Sell(InpLotSize, _Symbol, price, slp, tpp, "3CandleEA");
+      ok = trade.Sell(lot, _Symbol, price, slp, tpp, "3CandleEA");
      }
    if(ok)
      {
-      PrintFormat("%s @ %.*f SL=%.*f TP=%.*f risk=%.*f", (dir > 0 ? "BUY" : "SELL"),
+      PrintFormat("%s %.2f lot @ %.*f SL=%.*f TP=%.*f risk=%.*f", (dir > 0 ? "BUY" : "SELL"), lot,
                   g_symDigits, price, g_symDigits, slp, g_symDigits, tpp, g_symDigits, slDist);
       NotifyEntry(dir, price);
      }
@@ -443,7 +489,10 @@ void DrawDashboard()
    DashLabel("l3", "Filters : Trend=" + (InpUseTrendFilter?"Y":"N") + " RSI=" + rsiStr
                  + " Cnf=" + (InpConfirmCandle?"Y":"N"), x, y + (n++) * lh, clrWhite, 9);
    DashLabel("l4", "SL/TP   : " + (InpAutoSLTP ? "Auto 1:" + DoubleToString(InpRewardRatio,1)
-                 : "Fixed " + DoubleToString(InpTakeProfit,2) + "/" + DoubleToString(InpStopLoss,2)), x, y + (n++) * lh, clrWhite, 9);
+                 : "Fixed " + DoubleToString(InpTakeProfit,2) + "/" + DoubleToString(InpStopLoss,2))
+                 + (InpUseRiskSizing ? "  Risk " + DoubleToString(InpRiskPercent,1) + "%" : "  Lot " + DoubleToString(InpLotSize,2))
+                 + (InpMaxSLUSD > 0.0 ? "  maxSL " + DoubleToString(InpMaxSLUSD,0) : ""),
+             x, y + (n++) * lh, clrWhite, 9);
    color sc = (g_lastSignal=="BUY"?clrLime:(g_lastSignal=="SELL"?clrTomato:clrSilver));
    DashLabel("l5", "Signal  : " + g_lastSignal + " " + (g_lastSignalTm>0?TimeToString(g_lastSignalTm,TIME_MINUTES):"-"), x, y + (n++) * lh, sc, 9);
    DashLabel("l6", "Open pos: " + IntegerToString(CountEaPositions()), x, y + (n++) * lh, clrWhite, 9);
