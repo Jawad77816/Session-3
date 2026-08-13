@@ -23,7 +23,7 @@
 //|  XAUUSD.                                                          |
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal Signal"
-#property version   "1.70"
+#property version   "1.80"
 #property strict
 #property description "Three-candle reversal pattern indicator for XAUUSD on M1/M5."
 #property description "Draws arrows and plays a notification sound on each signal."
@@ -125,6 +125,8 @@ bool     g_rsiReady     = false;   // RSI buffer valid this calculation
 string   g_lastSignal   = "None";  // last signal (dashboard)
 datetime g_lastSignalTm = 0;       // time of last signal
 string   g_lastCheck    = "-";     // why the last closed bar had no signal (diagnostics)
+double   g_curRSI       = -1.0;    // RSI at the last closed bar (dashboard)
+string   g_divText      = "-";     // divergence state at the last closed bar (dashboard)
 #define  DASH_PREFIX      "TCRIND_DASH_"
 
 //+------------------------------------------------------------------+
@@ -373,7 +375,7 @@ void DrawDashboard(const int rates_total)
    int lh = 16;
    int n  = 0;
 
-   DashPanel("BG", x - 6, y - 6, 330, 10 * lh + 14, InpDashBgColor);
+   DashPanel("BG", x - 6, y - 6, 330, 12 * lh + 14, InpDashBgColor);
 
    DashLabel("l0", "3-Candle Reversal Signal", x, y + (n++) * lh, clrGold, 10);
    DashLabel("l1", "Pair/TF : " + _Symbol + " " + TfToStr((ENUM_TIMEFRAMES)_Period),
@@ -391,6 +393,16 @@ void DrawDashboard(const int rates_total)
                  + " Cnf=" + (InpConfirmCandle ? "Y" : "N")
                  + " RSI=" + rsiStr,
              x, y + (n++) * lh, clrWhite, 9);
+
+   // Live RSI value (coloured by overbought/oversold) + divergence readout.
+   string rsiVal = (g_curRSI >= 0.0 ? DoubleToString(g_curRSI, 1) : "n/a");
+   color  rcol   = (g_curRSI < 0.0 ? clrSilver
+                    : (g_curRSI >= InpRSIOverbought ? clrTomato
+                       : (g_curRSI <= InpRSIOversold ? clrLime : clrWhite)));
+   DashLabel("lr", "RSI(" + IntegerToString(InpRSIPeriod) + ") : " + rsiVal,
+             x, y + (n++) * lh, rcol, 9);
+   color  dcol   = (g_divText == "Bullish" ? clrLime : (g_divText == "Bearish" ? clrTomato : clrSilver));
+   DashLabel("ld", "Diverge : " + g_divText, x, y + (n++) * lh, dcol, 9);
 
    color  scol  = (g_lastSignal == "BUY" ? clrLime : (g_lastSignal == "SELL" ? clrTomato : clrSilver));
    string sigtm = (g_lastSignalTm > 0 ? TimeToString(g_lastSignalTm, TIME_MINUTES) : "-");
@@ -693,6 +705,31 @@ int OnCalculate(const int        rates_total,
 
    // Diagnose the last closed bar every calculation (feeds the dashboard).
    g_lastCheck = DiagnoseBar(sig, rates_total, maReady, open, high, low, close);
+
+   // Live RSI value + divergence readout for the dashboard.
+   if(g_rsiReady && sig >= 2)
+     {
+      g_curRSI = g_rsiArr[sig];
+      int look   = (InpSwingLookback > 0 ? InpSwingLookback : 12);
+      int wStart = sig - look + 1; if(wStart < 0) wStart = 0;
+      bool isHigh = true, isLow = true;
+      double maxR = g_rsiArr[sig], minR = g_rsiArr[sig];
+      for(int k = wStart; k <= sig; k++)
+        {
+         if(high[k] > high[sig]) isHigh = false;
+         if(low[k]  < low[sig])  isLow  = false;
+         if(g_rsiArr[k] > maxR) maxR = g_rsiArr[k];
+         if(g_rsiArr[k] > 0.0 && g_rsiArr[k] < minR) minR = g_rsiArr[k];
+        }
+      g_divText = "-";
+      if(isHigh && g_curRSI < maxR - 0.001)      g_divText = "Bearish";
+      else if(isLow && g_curRSI > minR + 0.001)  g_divText = "Bullish";
+     }
+   else
+     {
+      g_curRSI  = -1.0;
+      g_divText = "n/a";
+     }
 
    if(sig >= 2)
      {
