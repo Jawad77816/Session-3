@@ -15,10 +15,10 @@
 //|  Auto SL/TP: SL at the middle candle's extreme, TP = ratio x risk|
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal EA"
-#property version   "2.10"
+#property version   "2.20"
 #property strict
 #property description "Self-contained three-candle reversal EA for XAUUSD M1/M5 with trend"
-#property description "+ RSI filters, candle-based auto SL/RR TP, risk-% sizing and max-SL cap."
+#property description "+ RSI filters, auto SL/RR TP, risk sizing, margin-aware lot and loss lockout."
 
 #include <Trade/Trade.mqh>
 
@@ -49,6 +49,12 @@ input group    "=== Risk Management ==="
 input bool     InpUseRiskSizing  = true;        // Size lot by % risk (else fixed InpLotSize)
 input double   InpRiskPercent    = 1.0;         // Risk this % of balance per trade
 input double   InpMaxSLUSD       = 10.0;        // Skip signals whose SL is wider than this (USD, 0=off)
+input bool     InpCapLotToMargin = true;        // If lot too big for margin, use max affordable (never "no money")
+
+input group    "=== Anti-Trend Lockout ==="
+input bool     InpUseLossLockout = true;        // Pause after consecutive losses (stop fighting a trend)
+input int      InpMaxConsecLosses = 3;          // Lock out after this many losses in a row
+input int      InpLockoutBars    = 12;          // Pause for this many bars after lockout
 
 input group    "=== Trailing Stop (fixed USD) ==="
 input bool     InpUseTrailing    = false;       // Tight trailing (off: let R:R TP run)
@@ -112,6 +118,8 @@ int      g_symDigits   = 2;
 double   g_symPoint    = 0.01;
 int      g_maHandle    = INVALID_HANDLE;
 int      g_rsiHandle   = INVALID_HANDLE;
+int      g_consecLosses = 0;                    // consecutive losing trades
+datetime g_lockoutUntil = 0;                    // trading paused until this time
 string   g_lastSignal  = "None";
 datetime g_lastSignalTm = 0;
 string   g_lastCheck   = "-";
@@ -362,6 +370,25 @@ double CalcLot(const double slDist)
    return(NormalizeLot(riskAmt / lossPerLot));
   }
 
+//+------------------------------------------------------------------+
+//| Largest lot the current free margin can open (0 = none)          |
+//+------------------------------------------------------------------+
+double MaxAffordableLot(const int dir, const double price)
+  {
+   double freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
+   double marginPerLot = 0.0;
+   ENUM_ORDER_TYPE ot = (dir > 0 ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
+   if(!OrderCalcMargin(ot, _Symbol, 1.0, price, marginPerLot) || marginPerLot <= 0.0)
+      return(0.0);
+   double step   = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   double minLot = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+   if(step <= 0.0) step = 0.01;
+   // Use 95% of free margin as a safety buffer, round DOWN to a step.
+   double lot = MathFloor((freeMargin * 0.95 / marginPerLot) / step) * step;
+   if(lot < minLot) return(0.0);   // cannot afford even the minimum lot
+   return(lot);
+  }
+
 void OpenTrade(const int dir)
   {
    double price = (dir > 0 ? SymbolInfoDouble(_Symbol, SYMBOL_ASK) : SymbolInfoDouble(_Symbol, SYMBOL_BID));
@@ -378,6 +405,23 @@ void OpenTrade(const int dir)
 
    double lot = CalcLot(slDist);
    if(lot <= 0.0) { Print("Skip: computed lot <= 0"); return; }
+
+   // Margin cap: if the requested lot needs more margin than we have, use the
+   // largest affordable lot instead of failing with "not enough money".
+   if(InpCapLotToMargin)
+     {
+      double affordable = MaxAffordableLot(dir, price);
+      if(affordable <= 0.0)
+        {
+         PrintFormat("Skip %s: balance too small for even the minimum lot.", (dir > 0 ? "BUY" : "SELL"));
+         return;
+        }
+      if(lot > affordable)
+        {
+         PrintFormat("Lot %.2f needs more margin than available - capping to %.2f", lot, affordable);
+         lot = affordable;
+        }
+     }
 
    double slp, tpp; bool ok;
    if(dir > 0)
@@ -495,7 +539,11 @@ void DrawDashboard()
              x, y + (n++) * lh, clrWhite, 9);
    color sc = (g_lastSignal=="BUY"?clrLime:(g_lastSignal=="SELL"?clrTomato:clrSilver));
    DashLabel("l5", "Signal  : " + g_lastSignal + " " + (g_lastSignalTm>0?TimeToString(g_lastSignalTm,TIME_MINUTES):"-"), x, y + (n++) * lh, sc, 9);
-   DashLabel("l6", "Open pos: " + IntegerToString(CountEaPositions()), x, y + (n++) * lh, clrWhite, 9);
+   bool locked = (g_lockoutUntil > 0 && TimeCurrent() < g_lockoutUntil);
+   DashLabel("l6", "Open pos: " + IntegerToString(CountEaPositions())
+                 + "  Losses: " + IntegerToString(g_consecLosses)
+                 + (locked ? "  [LOCKED]" : ""),
+             x, y + (n++) * lh, (locked ? clrOrange : clrWhite), 9);
    DashLabel("l7", "Trailing: " + (InpUseTrailing?"ON":"OFF"), x, y + (n++) * lh, clrWhite, 9);
    bool isSig = (StringFind(g_lastCheck, "signal") >= 0);
    DashLabel("l8", "Last bar: " + g_lastCheck, x, y + (n++) * lh, (isSig?clrLime:clrGoldenrod), 9);
@@ -556,11 +604,49 @@ void OnTick()
       !AccountInfoInteger(ACCOUNT_TRADE_ALLOWED)) return;
    if(!SpreadOK()) return;
 
+   // Anti-trend lockout: after N consecutive losses, stand aside for a while.
+   if(InpUseLossLockout && g_lockoutUntil > 0 && TimeCurrent() < g_lockoutUntil)
+     {
+      g_lastCheck = "locked out (" + IntegerToString(g_consecLosses) + " losses)";
+      return;
+     }
+
    int signal = CheckPattern();
    if(signal == 0) return;
 
    g_lastSignal = (signal > 0 ? "BUY" : "SELL");
    g_lastSignalTm = TimeCurrent();
    OpenTrade(signal);
+  }
+
+//+------------------------------------------------------------------+
+//| Track closed trades: count consecutive losses -> set lockout     |
+//+------------------------------------------------------------------+
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest &request,
+                        const MqlTradeResult &result)
+  {
+   if(!InpUseLossLockout) return;
+   if(trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
+   if(!HistoryDealSelect(trans.deal)) return;
+   if(HistoryDealGetInteger(trans.deal, DEAL_MAGIC) != InpMagicNumber) return;
+   if(HistoryDealGetInteger(trans.deal, DEAL_ENTRY) != DEAL_ENTRY_OUT) return;  // closing deal only
+
+   double profit = HistoryDealGetDouble(trans.deal, DEAL_PROFIT)
+                 + HistoryDealGetDouble(trans.deal, DEAL_SWAP)
+                 + HistoryDealGetDouble(trans.deal, DEAL_COMMISSION);
+   if(profit < 0.0)
+     {
+      g_consecLosses++;
+      if(g_consecLosses >= InpMaxConsecLosses)
+        {
+         g_lockoutUntil = TimeCurrent() + (long)InpLockoutBars * PeriodSeconds();
+         PrintFormat("Lockout: %d losses in a row -> pausing %d bars.", g_consecLosses, InpLockoutBars);
+        }
+     }
+   else
+     {
+      g_consecLosses = 0;   // a win resets the streak
+     }
   }
 //+------------------------------------------------------------------+
