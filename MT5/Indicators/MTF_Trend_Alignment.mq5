@@ -54,7 +54,7 @@ input group             "=== Trend Definition ==="
 input ENUM_TREND_METHOD InpMethod     = TREND_EMA_CROSS;  // Trend method
 input int               InpFastEMA    = 21;               // Fast EMA period
 input int               InpSlowEMA    = 50;               // Slow EMA period
-input ENUM_MA_PRICE     InpAppliedPr  = PRICE_CLOSE;      // Applied price
+input ENUM_APPLIED_PRICE InpAppliedPr = PRICE_CLOSE;      // Applied price
 
 input group             "=== Risk / Reward ==="
 input int               InpATRPeriod  = 14;               // ATR period (SL distance)
