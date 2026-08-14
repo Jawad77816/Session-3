@@ -1,0 +1,89 @@
+//@version=5
+// =============================================================================
+//  RSI Blue-Zone + Signal Confirmation
+//  ---------------------------------------------------------------------------
+//  Fires ONE marker / ONE alert only when BOTH of your conditions line up on
+//  the same bar:
+//
+//     BUY   =  your buy  signal   AND   RSI(14) is ABOVE the blue zone
+//     SELL  =  your sell signal   AND   RSI(14) is BELOW the blue zone
+//
+//  This MERGES your "RSI + blue zone" indicator and your "Buy/Sell" indicator
+//  into a single script, so it uses only ONE of your two free-plan indicator
+//  slots and gives you a single, clean alert condition.
+//
+//  FREE-PLAN NOTE: adding this custom indicator works fine on the free plan,
+//  but *firing an alert from it* needs a plan that supports TECHNICAL alerts
+//  (Essential tier or higher). See README.md for a 100% free workaround
+//  (gold_signal_watcher.py) that runs the same criteria off-platform.
+// =============================================================================
+indicator("RSI Blue-Zone + Signal Confirmation", overlay=true)
+
+// ── 1) RSI + blue zone  (match these to YOUR RSI indicator's settings) ───────
+grpR    = "RSI + Blue Zone"
+rsiLen  = input.int(14,        "RSI length",       group=grpR)
+rsiSrc  = input.source(close,  "RSI source",       group=grpR)
+zoneTop = input.float(60,      "Blue zone TOP",    group=grpR, tooltip="RSI above this = bullish (buy) side of the zone")
+zoneBot = input.float(40,      "Blue zone BOTTOM", group=grpR, tooltip="RSI below this = bearish (sell) side of the zone")
+
+rsi      = ta.rsi(rsiSrc, rsiLen)
+rsiAbove = rsi > zoneTop          // RSI above the blue zone
+rsiBelow = rsi < zoneBot          // RSI below the blue zone
+
+// ── 2) Your Buy/Sell signal  (pick how it is fed in) ─────────────────────────
+//   A) "Built-in EMA"      : price crossing a moving average. Tune the length
+//                            so its flips line up with your Buy/Sell indicator.
+//   B) "External indicator": in THIS script's settings, set "External signal"
+//                            to a plot exposed by your Buy/Sell indicator, then
+//                            set the buy/sell thresholds. (Your indicator must
+//                            expose a numeric plot for it to be selectable.)
+grpS      = "Buy / Sell signal"
+sigMode   = input.string("Built-in EMA", "Signal mode", options=["Built-in EMA", "External indicator"], group=grpS)
+
+// A) built-in signal
+emaLen    = input.int(20, "EMA length (built-in mode)", group=grpS)
+ma        = ta.ema(close, emaLen)
+biBuy     = ta.crossover(close,  ma)
+biSell    = ta.crossunder(close, ma)
+
+// B) external signal
+extSig    = input.source(close, "External signal plot (external mode)", group=grpS)
+extBuyGt  = input.float(0, "BUY when external crosses ABOVE",  group=grpS)
+extSellLt = input.float(0, "SELL when external crosses BELOW", group=grpS)
+exBuy     = ta.crossover(extSig,  extBuyGt)
+exSell    = ta.crossunder(extSig, extSellLt)
+
+rawBuy    = sigMode == "Built-in EMA" ? biBuy  : exBuy
+rawSell   = sigMode == "Built-in EMA" ? biSell : exSell
+
+// ── 3) Confirmed signal = signal AND RSI on the correct side of the zone ─────
+confirmBuy  = rawBuy  and rsiAbove
+confirmSell = rawSell and rsiBelow
+
+// ── 4) On-chart markers (only when confirmed) ────────────────────────────────
+plotshape(confirmBuy,  title="Confirmed BUY",  style=shape.labelup,   location=location.belowbar, color=color.new(color.green, 0), text="BUY",  textcolor=color.white, size=size.small)
+plotshape(confirmSell, title="Confirmed SELL", style=shape.labeldown, location=location.abovebar, color=color.new(color.red,   0), text="SELL", textcolor=color.white, size=size.small)
+
+// live status table (top-right): current RSI + which side of the zone it's on
+var table t = table.new(position.top_right, 1, 3, border_width=1)
+if barstate.islast
+    table.cell(t, 0, 0, "RSI " + str.tostring(rsi, "#.##"), text_color=color.white, bgcolor=color.new(color.purple, 0))
+    zoneTxt = rsiAbove ? "ABOVE zone - buy side" : rsiBelow ? "BELOW zone - sell side" : "INSIDE zone - no trade"
+    zoneCol = rsiAbove ? color.green : rsiBelow ? color.red : color.gray
+    table.cell(t, 0, 1, zoneTxt, text_color=color.white, bgcolor=color.new(zoneCol, 0))
+    table.cell(t, 0, 2, "zone " + str.tostring(zoneBot, "#") + " - " + str.tostring(zoneTop, "#"), text_color=color.white, bgcolor=color.new(color.gray, 20))
+
+// ── 5) Alerts ────────────────────────────────────────────────────────────────
+// (a) alertcondition(): choose these in the "Create Alert" dialog.
+//     (Requires a plan that supports technical alerts - Essential or higher.)
+alertcondition(confirmBuy,               "Confirmed BUY",         "BUY {{ticker}} @ {{close}} (buy signal + RSI above blue zone)")
+alertcondition(confirmSell,              "Confirmed SELL",        "SELL {{ticker}} @ {{close}} (sell signal + RSI below blue zone)")
+alertcondition(confirmBuy or confirmSell,"Confirmed BUY or SELL", "{{ticker}} confirmed signal @ {{close}}")
+
+// (b) alert(): fires on "Any alert() function call" and carries a webhook-ready
+//     JSON payload for automation bridges (PineConnector, Capitalise.ai, etc.).
+//     Also needs a webhook-capable (paid) plan.
+if confirmBuy
+    alert('{"action":"buy","symbol":"'  + syminfo.ticker + '","price":"' + str.tostring(close) + '"}', alert.freq_once_per_bar_close)
+if confirmSell
+    alert('{"action":"sell","symbol":"' + syminfo.ticker + '","price":"' + str.tostring(close) + '"}', alert.freq_once_per_bar_close)
