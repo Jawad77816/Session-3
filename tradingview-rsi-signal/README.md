@@ -31,7 +31,7 @@ pay:
 
 1. **Merge into one indicator + upgrade to Essential** → the clean, reliable way.
 2. **Stay 100% free** → run the same criteria *off* TradingView with the included
-   `gold_signal_watcher.py`, which pings you on Telegram.
+   `gold_signal_watcher.py`, which pings you on **WhatsApp**.
 3. **Auto-execute trades** → possible, but needs webhooks (paid) + a broker
    bridge. Covered at the bottom, with the risk caveat you should hear.
 
@@ -84,11 +84,11 @@ Route 2.
 
 ---
 
-## Route 2 — Stay 100% free, get pinged off-platform  ·  `gold_signal_watcher.py`
+## Route 2 — Stay 100% free, get pinged on WhatsApp  ·  `gold_signal_watcher.py`
 
 This small Python script pulls XAUUSD candles from **OANDA's free API** (the same
 broker your chart uses), computes **the exact same RSI(14) + blue-zone rule**, and
-sends you a **Telegram** message when a confirmed BUY/SELL appears. No TradingView
+sends you a **WhatsApp** message when a confirmed BUY/SELL appears. No TradingView
 alert needed, no indicator slots used.
 
 > The RSI + blue-zone logic is exact (Wilder smoothing, matches TradingView).
@@ -96,29 +96,55 @@ alert needed, no indicator slots used.
 > replace `signal()`, so its flips match your indicator. This is the one part that
 > can't be copied 1:1 without your indicator's formula.
 
-### Setup
+First, the data source (needed for both WhatsApp options): create a *practice*
+account at **oanda.com → Manage API Access → generate a token**.
 
-1. **OANDA token (free):** create a *practice* account at oanda.com → **Manage
-   API Access** → generate a token.
-2. **Telegram (free, optional but recommended):** message **@BotFather** →
-   `/newbot` → copy the bot token. Then get your chat id (message your bot, or use
-   **@userinfobot**).
-3. Set environment variables and run:
+### WhatsApp option A — CallMeBot (free, to your own number, ~2 min setup)
+
+CallMeBot is a free service that WhatsApps **you** (your own number only — which is
+exactly what a personal alert needs). One-time activation:
+
+1. Save the CallMeBot WhatsApp number as a contact and send it the exact phrase
+   **`I allow callmebot to send me messages`** from your WhatsApp. Get the current
+   number + phrase from **callmebot.com/whatsapp** (at time of writing it's
+   **+34 698 28 89 73** — verify on their site, it changes occasionally).
+2. It replies **`API Activated ... Your APIKEY is 123123`** — copy that key.
+3. Configure and run:
 
    ```bash
    export OANDA_TOKEN="your_practice_token"
-   export TELEGRAM_TOKEN="your_bot_token"       # optional
-   export TELEGRAM_CHAT_ID="your_chat_id"       # optional
-   export GRANULARITY="M5"                        # match your chart timeframe
+   export GRANULARITY="M5"                     # match your chart timeframe
+   export NOTIFY_PROVIDER="callmebot"
+   export CALLMEBOT_PHONE="+92XXXXXXXXXX"       # your WhatsApp number, with country code
+   export CALLMEBOT_APIKEY="123123"             # from the activation reply
 
-   python3 gold_signal_watcher.py --selftest      # offline math check
-   python3 gold_signal_watcher.py                 # single check
+   python3 gold_signal_watcher.py --selftest    # offline math check (no network)
+   python3 gold_signal_watcher.py               # single check
    python3 gold_signal_watcher.py --loop --interval 60   # keep watching
    ```
 
-Run `--loop` on any always-on machine (an old laptop, a free-tier VPS, a
-Raspberry Pi, or a scheduled cron job). It de-duplicates so you get **one** ping
-per confirmed bar.
+### WhatsApp option B — Twilio sandbox (free trial, more robust)
+
+1. Create a free Twilio account → Console → **Messaging → Try it out → WhatsApp
+   sandbox**. Join by sending **`join <your-code>`** to the sandbox number
+   (**+1 415 523 8886**) from your WhatsApp.
+2. Copy your **Account SID** and **Auth Token** from the console.
+3. Configure and run:
+
+   ```bash
+   export OANDA_TOKEN="your_practice_token"
+   export NOTIFY_PROVIDER="twilio"
+   export TWILIO_SID="ACxxxxxxxx"
+   export TWILIO_TOKEN="your_auth_token"
+   export TWILIO_FROM="whatsapp:+14155238886"   # sandbox sender (default)
+   export TWILIO_TO="whatsapp:+92XXXXXXXXXX"     # your number
+
+   python3 gold_signal_watcher.py --loop --interval 60
+   ```
+
+Run `--loop` on any always-on machine (an old laptop, a free-tier VPS, a Raspberry
+Pi, or a scheduled cron job). It de-duplicates so you get **one** ping per confirmed
+bar. `NOTIFY_PROVIDER` also accepts `telegram` or `console` if you ever want them.
 
 ---
 
@@ -153,7 +179,7 @@ loss.** Start on practice, not live.
 
 - **Cheapest reliable path:** Route 1 + Essential (~$15/mo) → real push alerts,
   five minutes of setup.
-- **Won't pay anything:** Route 2 → the Python watcher on Telegram.
+- **Won't pay anything:** Route 2 → the Python watcher on WhatsApp (CallMeBot).
 - **Want hands-off trading:** Route 3, but only after practice-account testing.
 
 ## Files
@@ -161,6 +187,6 @@ loss.** Start on practice, not live.
 | File | What it is |
 | --- | --- |
 | `rsi_bluezone_signal_alert.pine` | Combined TradingView indicator (RSI+zone + signal) with one alert condition. |
-| `gold_signal_watcher.py` | Free off-platform watcher: OANDA data → same rule → Telegram ping. |
+| `gold_signal_watcher.py` | Free off-platform watcher: OANDA data → same rule → WhatsApp ping. |
 
 *Not financial advice. Test on a practice account before risking real money.*

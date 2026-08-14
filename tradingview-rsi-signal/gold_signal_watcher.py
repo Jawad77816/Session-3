@@ -11,17 +11,19 @@ two free-plan indicator slots:
     SELL alert  =  sell signal  AND  RSI(14) is BELOW the blue zone
 
 Data source : OANDA v20 REST API (free "practice" account token)
-Notify      : Telegram (free) and/or console
+Notify      : WhatsApp - free via CallMeBot (to your own number), or the Twilio
+              WhatsApp sandbox; falls back to console.
 
 IMPORTANT: the buy/sell signal below is an APPROXIMATION (EMA cross by default).
 Tune SIGNAL_EMA - or replace signal() - so its flips line up with your own
 Buy/Sell indicator. The RSI + blue-zone logic is exact (matches TradingView's
 Wilder-smoothed ta.rsi).
 
-Quick start:
-    export OANDA_TOKEN="...."          # from oanda.com -> practice account -> API
-    export TELEGRAM_TOKEN="...."       # optional, from @BotFather
-    export TELEGRAM_CHAT_ID="...."     # optional, your chat id
+Quick start (WhatsApp via CallMeBot - free, to your own number):
+    export OANDA_TOKEN="...."           # oanda.com -> practice account -> API
+    export NOTIFY_PROVIDER="callmebot"  # callmebot | twilio | telegram | console
+    export CALLMEBOT_PHONE="+9230...."  # your WhatsApp number, with country code
+    export CALLMEBOT_APIKEY="......"    # from the CallMeBot activation reply
     python3 gold_signal_watcher.py --selftest   # offline math check
     python3 gold_signal_watcher.py              # one check
     python3 gold_signal_watcher.py --loop --interval 60
@@ -29,6 +31,7 @@ Quick start:
 
 from __future__ import annotations
 import argparse
+import base64
 import json
 import os
 import sys
@@ -48,6 +51,20 @@ ZONE_BOTTOM = 40.0         # RSI below this = sell-side of the blue zone
 
 SIGNAL_EMA = 20           # built-in signal: price vs EMA(SIGNAL_EMA) - TUNE THIS
 
+# Where to send alerts: callmebot (WhatsApp, free) | twilio (WhatsApp) | telegram | console
+NOTIFY_PROVIDER = os.environ.get("NOTIFY_PROVIDER", "callmebot")
+
+# CallMeBot - free WhatsApp to YOUR OWN number (see README for one-time activation)
+CALLMEBOT_PHONE = os.environ.get("CALLMEBOT_PHONE", "")      # e.g. +923001234567
+CALLMEBOT_APIKEY = os.environ.get("CALLMEBOT_APIKEY", "")
+
+# Twilio WhatsApp sandbox (free trial) - more robust alternative
+TWILIO_SID = os.environ.get("TWILIO_SID", "")
+TWILIO_TOKEN = os.environ.get("TWILIO_TOKEN", "")
+TWILIO_FROM = os.environ.get("TWILIO_FROM", "whatsapp:+14155238886")   # sandbox sender
+TWILIO_TO = os.environ.get("TWILIO_TO", "")                           # whatsapp:+9230...
+
+# Telegram (kept as an option; not required)
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
 
@@ -139,15 +156,54 @@ def fetch_closes(count=200):
     return times, closes
 
 
+def _notify_callmebot(msg):
+    """Free WhatsApp to your own number via CallMeBot."""
+    if not (CALLMEBOT_PHONE and CALLMEBOT_APIKEY):
+        print("[warn] set CALLMEBOT_PHONE and CALLMEBOT_APIKEY for WhatsApp (see README).", flush=True)
+        return
+    q = urllib.parse.urlencode({"phone": CALLMEBOT_PHONE, "text": msg, "apikey": CALLMEBOT_APIKEY})
+    urllib.request.urlopen(f"https://api.callmebot.com/whatsapp.php?{q}", timeout=15).read()
+
+
+def _notify_twilio(msg):
+    """WhatsApp via the Twilio sandbox (free trial)."""
+    if not (TWILIO_SID and TWILIO_TOKEN and TWILIO_TO):
+        print("[warn] set TWILIO_SID, TWILIO_TOKEN and TWILIO_TO for WhatsApp.", flush=True)
+        return
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_SID}/Messages.json"
+    body = urllib.parse.urlencode({"From": TWILIO_FROM, "To": TWILIO_TO, "Body": msg}).encode()
+    req = urllib.request.Request(url, data=body)
+    token = base64.b64encode(f"{TWILIO_SID}:{TWILIO_TOKEN}".encode()).decode()
+    req.add_header("Authorization", "Basic " + token)
+    urllib.request.urlopen(req, timeout=20).read()
+
+
+def _notify_telegram(msg):
+    if not (TELEGRAM_TOKEN and TELEGRAM_CHAT_ID):
+        print("[warn] set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID for Telegram.", flush=True)
+        return
+    q = urllib.parse.urlencode({"chat_id": TELEGRAM_CHAT_ID, "text": msg})
+    urllib.request.urlopen(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?{q}", timeout=15).read()
+
+
 def notify(msg):
+    """Print to console, then push via the configured provider."""
     print(msg, flush=True)
-    if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
-        q = urllib.parse.urlencode({"chat_id": TELEGRAM_CHAT_ID, "text": msg})
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?{q}"
-        try:
-            urllib.request.urlopen(url, timeout=15).read()
-        except Exception as e:  # noqa: BLE001
-            print(f"[warn] telegram send failed: {e}", flush=True)
+    provider = NOTIFY_PROVIDER.strip().lower()
+    senders = {
+        "callmebot": _notify_callmebot,
+        "twilio": _notify_twilio,
+        "telegram": _notify_telegram,
+        "console": lambda _m: None,
+    }
+    sender = senders.get(provider)
+    if sender is None:
+        print(f"[warn] unknown NOTIFY_PROVIDER '{provider}'; console only.", flush=True)
+        return
+    try:
+        sender(msg)
+    except Exception as e:  # noqa: BLE001
+        print(f"[warn] notify via {provider} failed: {e}", flush=True)
 
 
 def load_state():
