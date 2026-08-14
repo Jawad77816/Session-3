@@ -15,7 +15,7 @@
 //|  Auto SL/TP: SL at the middle candle's extreme, TP = ratio x risk|
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal EA"
-#property version   "2.30"
+#property version   "2.40"
 #property strict
 #property description "Self-contained three-candle reversal EA for XAUUSD M1/M5 with trend,"
 #property description "RSI and ADX-regime filters, auto SL/RR TP, risk sizing and loss lockout."
@@ -65,6 +65,7 @@ input double   InpTrailStepUSD   = 0.0;         // Min SL move before updating (
 input group    "=== Signals ==="
 input bool     InpEnableBuy      = true;        // Allow BUY trades
 input bool     InpEnableSell     = true;        // Allow SELL trades
+input bool     InpReverseSignals = false;       // Flip buy<->sell (test continuation vs reversal)
 
 input group    "=== Trend / Reversal Filter ==="
 input bool           InpUseTrendFilter = true;  // Only take reversals (skip mid-trend)
@@ -645,6 +646,8 @@ void OnTick()
 
    int signal = CheckPattern();
    if(signal == 0) return;
+
+   if(InpReverseSignals) signal = -signal;   // continuation test: fade the fade
 
    g_lastSignal = (signal > 0 ? "BUY" : "SELL");
    g_lastSignalTm = TimeCurrent();
