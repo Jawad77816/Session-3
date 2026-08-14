@@ -15,10 +15,10 @@
 //|  Auto SL/TP: SL at the middle candle's extreme, TP = ratio x risk|
 //+------------------------------------------------------------------+
 #property copyright "Three-Candle Reversal EA"
-#property version   "2.20"
+#property version   "2.30"
 #property strict
-#property description "Self-contained three-candle reversal EA for XAUUSD M1/M5 with trend"
-#property description "+ RSI filters, auto SL/RR TP, risk sizing, margin-aware lot and loss lockout."
+#property description "Self-contained three-candle reversal EA for XAUUSD M1/M5 with trend,"
+#property description "RSI and ADX-regime filters, auto SL/RR TP, risk sizing and loss lockout."
 
 #include <Trade/Trade.mqh>
 
@@ -73,6 +73,11 @@ input int            InpMAPeriod       = 50;    // Trend MA period (0=off)
 input ENUM_MA_METHOD InpMAMethod       = MODE_EMA; // Trend MA method
 input int            InpMASlopeBars    = 5;     // Bars used to measure MA slope
 
+input group    "=== Regime Filter (ADX) ==="
+input bool           InpUseADXFilter   = true;  // Only fade RANGING markets (skip strong trends)
+input int            InpADXPeriod      = 14;    // ADX period
+input double         InpADXMax         = 30.0;  // Skip when ADX above this (market trending)
+
 input group    "=== Candle Shape Filter ==="
 input bool     InpRequireSolidOuter = true;     // 1st & 3rd must be solid (not doji/hammer)
 input bool     InpMiddleInsideFirst = true;     // Middle body inside 1st candle's body
@@ -118,6 +123,7 @@ int      g_symDigits   = 2;
 double   g_symPoint    = 0.01;
 int      g_maHandle    = INVALID_HANDLE;
 int      g_rsiHandle   = INVALID_HANDLE;
+int      g_adxHandle   = INVALID_HANDLE;
 int      g_consecLosses = 0;                    // consecutive losing trades
 datetime g_lockoutUntil = 0;                    // trading paused until this time
 string   g_lastSignal  = "None";
@@ -171,6 +177,23 @@ double RsiAt(const int shift)
    if(g_rsiHandle == INVALID_HANDLE) return(EMPTY_VALUE);
    double b[]; if(CopyBuffer(g_rsiHandle, 0, shift, 1, b) < 1) return(EMPTY_VALUE);
    return(b[0]);
+  }
+double AdxAt(const int shift)
+  {
+   if(g_adxHandle == INVALID_HANDLE) return(EMPTY_VALUE);
+   double b[]; if(CopyBuffer(g_adxHandle, 0, shift, 1, b) < 1) return(EMPTY_VALUE);  // buffer 0 = MAIN ADX
+   return(b[0]);
+  }
+
+//+------------------------------------------------------------------+
+//| Regime filter: only fade ranging markets (ADX <= max)            |
+//+------------------------------------------------------------------+
+bool AdxOK()
+  {
+   if(!InpUseADXFilter || g_adxHandle == INVALID_HANDLE) return(true);
+   double adx = AdxAt(1);
+   if(adx == EMPTY_VALUE || adx <= 0.0) return(true);   // not ready -> don't block
+   return(adx <= InpADXMax);
   }
 
 //+------------------------------------------------------------------+
@@ -255,6 +278,7 @@ int CheckPattern()
       if(InpMiddleInsideFirst && !MiddleBodyInsideFirst(o2,c2,o1,c1)) { g_lastCheck = "BUY blocked: middle body not inside 1st"; return(0); }
       if(off == 1 && !(cc > oc))                                 { g_lastCheck = "BUY blocked: confirmation not bullish"; return(0); }
       if(!RsiOK(1, off))                                         { g_lastCheck = "BUY blocked: no bullish RSI momentum"; return(0); }
+      if(!AdxOK())                                               { g_lastCheck = "BUY blocked: market trending (ADX)"; return(0); }
       if(!TrendFilterOK(1, off))                                 { g_lastCheck = "BUY blocked: trend/swing filter"; return(0); }
       g_lastCheck = "BUY signal"; return(1);
      }
@@ -267,6 +291,7 @@ int CheckPattern()
       if(InpMiddleInsideFirst && !MiddleBodyInsideFirst(o2,c2,o1,c1)) { g_lastCheck = "SELL blocked: middle body not inside 1st"; return(0); }
       if(off == 1 && !(cc < oc))                                 { g_lastCheck = "SELL blocked: confirmation not bearish"; return(0); }
       if(!RsiOK(-1, off))                                        { g_lastCheck = "SELL blocked: no bearish RSI momentum"; return(0); }
+      if(!AdxOK())                                               { g_lastCheck = "SELL blocked: market trending (ADX)"; return(0); }
       if(!TrendFilterOK(-1, off))                                { g_lastCheck = "SELL blocked: trend/swing filter"; return(0); }
       g_lastCheck = "SELL signal"; return(-1);
      }
@@ -530,8 +555,12 @@ void DrawDashboard()
    string tr = TrendText();
    DashLabel("l2", "Trend   : " + tr, x, y + (n++) * lh, (tr=="UP"?clrLime:(tr=="DOWN"?clrTomato:clrSilver)), 9);
    string rsiStr = (!InpUseRSIFilter ? "N" : (InpRSIMode == RSI_DIVERGENCE ? "Div" : "Thr"));
+   double adxNow = (InpUseADXFilter ? AdxAt(1) : 0.0);
+   string adxStr = (!InpUseADXFilter ? "off" : (adxNow == EMPTY_VALUE ? "n/a" : DoubleToString(adxNow,0)
+                    + (adxNow > InpADXMax ? " TREND" : " range")));
    DashLabel("l3", "Filters : Trend=" + (InpUseTrendFilter?"Y":"N") + " RSI=" + rsiStr
-                 + " Cnf=" + (InpConfirmCandle?"Y":"N"), x, y + (n++) * lh, clrWhite, 9);
+                 + " Cnf=" + (InpConfirmCandle?"Y":"N") + "  ADX " + adxStr, x, y + (n++) * lh,
+             (InpUseADXFilter && adxNow != EMPTY_VALUE && adxNow > InpADXMax ? clrOrange : clrWhite), 9);
    DashLabel("l4", "SL/TP   : " + (InpAutoSLTP ? "Auto 1:" + DoubleToString(InpRewardRatio,1)
                  : "Fixed " + DoubleToString(InpTakeProfit,2) + "/" + DoubleToString(InpStopLoss,2))
                  + (InpUseRiskSizing ? "  Risk " + DoubleToString(InpRiskPercent,1) + "%" : "  Lot " + DoubleToString(InpLotSize,2))
@@ -568,6 +597,8 @@ int OnInit()
       g_maHandle = iMA(_Symbol, _Period, InpMAPeriod, 0, InpMAMethod, PRICE_CLOSE);
    if(InpUseRSIFilter && InpRSIPeriod > 0)
       g_rsiHandle = iRSI(_Symbol, _Period, InpRSIPeriod, PRICE_CLOSE);
+   if(InpUseADXFilter && InpADXPeriod > 0)
+      g_adxHandle = iADX(_Symbol, _Period, InpADXPeriod);
 
    trade.SetExpertMagicNumber(InpMagicNumber);
    trade.SetDeviationInPoints(InpDeviationPts);
@@ -582,6 +613,7 @@ void OnDeinit(const int reason)
   {
    if(g_maHandle != INVALID_HANDLE) IndicatorRelease(g_maHandle);
    if(g_rsiHandle != INVALID_HANDLE) IndicatorRelease(g_rsiHandle);
+   if(g_adxHandle != INVALID_HANDLE) IndicatorRelease(g_adxHandle);
    ObjectsDeleteAll(0, DASH_PREFIX);
    ChartRedraw(0);
   }
