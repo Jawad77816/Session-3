@@ -1,0 +1,283 @@
+<style>
+/* Services page specifics */
+.cat-nav{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1.75rem}
+.cat-nav a{background:var(--surface);border:1px solid var(--line);border-radius:100px;padding:.5rem 1.05rem;font-size:.88rem;font-weight:600;color:var(--plum);transition:background .2s,border-color .2s}
+.cat-nav a:hover{background:var(--bg-2);border-color:var(--plum-soft)}
+.treat{display:grid;grid-template-columns:1fr 1fr;gap:clamp(2rem,4vw,4rem);align-items:center;padding-block:clamp(2rem,4vw,3.25rem);border-bottom:1px solid var(--line-2)}
+.treat:last-of-type{border-bottom:none}
+.treat-media{aspect-ratio:5/4;border-radius:var(--radius-lg);overflow:hidden;position:relative;box-shadow:var(--shadow);border:1px solid var(--line)}
+.treat-media .tm-tag{position:absolute;inset:auto 0 0 0;padding:1rem;text-align:center;color:rgba(255,255,255,.9);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;background:linear-gradient(transparent,rgba(71,42,52,.4))}
+.tm-1{background:linear-gradient(140deg,#F0DCD3,#D6a99f 70%,#9c7570)}
+.tm-2{background:linear-gradient(140deg,#EFE0D6,#CDA9A0 70%,#8f6a67)}
+.tm-3{background:linear-gradient(140deg,#F2D9Cf,#D49f9a 70%,#a06f6b)}
+.tm-4{background:linear-gradient(140deg,#EDE3D8,#C9b4a6 70%,#8a746a)}
+.treat.-rev .treat-media{order:2}
+@media (max-width:820px){.treat{grid-template-columns:1fr;gap:1.75rem}.treat.-rev .treat-media{order:0}}
+.treat h2{margin-top:.4rem}
+.treat-chips{display:flex;gap:.5rem;flex-wrap:wrap;margin:1.1rem 0}
+.tchip{background:var(--bg-2);border-radius:8px;padding:.4rem .7rem;font-size:.78rem;font-weight:600;color:var(--plum-soft);display:inline-flex;align-items:center;gap:.4rem}
+.tlist{list-style:none;padding:0;margin:1.1rem 0 1.5rem;display:grid;gap:.55rem}
+.tlist li{padding-left:1.7rem;position:relative;font-size:.98rem}
+.tlist li::before{content:"";position:absolute;left:0;top:.35em;width:16px;height:16px;border-radius:50%;background:var(--blush);box-shadow:inset 0 0 0 1.5px var(--rose)}
+.tlist li::after{content:"";position:absolute;left:5px;top:.62em;width:5px;height:3px;border-left:1.5px solid var(--plum);border-bottom:1.5px solid var(--plum);transform:rotate(-45deg)}
+.price-line{font-size:.9rem;color:var(--muted);margin-bottom:1.1rem}
+.price-line b{color:var(--plum);font-family:var(--display);font-size:1.15rem;font-weight:400}
+/* before/after (reused from home system) */
+.ba-stage{position:relative;aspect-ratio:4/3;border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow);user-select:none;touch-action:none;border:1px solid var(--line)}
+.ba-layer{position:absolute;inset:0;display:flex;align-items:flex-end;padding:1rem 1.2rem;color:#fff;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;font-weight:600}
+.ba-before{background:linear-gradient(135deg,#c9b6ad,#a98d84)}
+.ba-after{background:linear-gradient(135deg,#F0DCD2,#D2a99f)}
+.ba-after .ba-tag{margin-left:auto}
+.ba-divider{position:absolute;top:0;bottom:0;left:50%;width:2px;background:#fff;z-index:3}
+.ba-handle{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:4;width:46px;height:46px;border-radius:50%;background:#fff;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;color:var(--plum)}
+.ba-range{position:absolute;inset:0;z-index:5;width:100%;height:100%;margin:0;opacity:0;cursor:ew-resize}
+.ba-grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:clamp(2rem,4vw,3.5rem);align-items:center}
+@media (max-width:860px){.ba-grid{grid-template-columns:1fr}}
+/* FAQ */
+.faq{max-width:840px;margin-inline:auto}
+.faq-item{border-bottom:1px solid var(--line)}
+.faq-q{width:100%;text-align:left;background:none;border:none;padding:1.3rem 0;font-family:var(--display);font-size:1.2rem;color:var(--ink);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:1rem}
+.faq-q .ic{width:26px;height:26px;flex:none;color:var(--plum);transition:transform .3s var(--ease)}
+.faq-q[aria-expanded=true] .ic{transform:rotate(45deg)}
+.faq-a{padding:0 0 1.4rem;color:var(--ink-2);max-width:70ch}
+.faq-a p{margin:0}
+/* finance teaser reuse */
+.finance{background:linear-gradient(135deg,var(--blush),#F5E7DF);border-radius:var(--radius-lg);overflow:hidden}
+.finance .wrap{display:grid;grid-template-columns:1.3fr .7fr;gap:2rem;align-items:center;padding-block:clamp(2.5rem,5vw,4rem)}
+@media (max-width:760px){.finance .wrap{grid-template-columns:1fr;text-align:center}.fin-cta{justify-content:center}}
+.finance h2{color:var(--plum-deep)}
+.fin-cta{display:flex;gap:.8rem;flex-wrap:wrap}
+.fin-badges{display:flex;gap:.7rem;align-items:center;margin-top:1rem;flex-wrap:wrap}
+.fin-chip{background:rgba(255,255,255,.7);border-radius:100px;padding:.4rem .9rem;font-size:.82rem;font-weight:600;color:var(--plum)}
+</style>
+
+<!-- PAGE HERO -->
+<section class="page-hero">
+  <div class="wrap">
+    <div class="ph-inner">
+      <nav class="breadcrumb" aria-label="Breadcrumb"><a href="01-home.html">Home</a><span class="sep">/</span><span>Services</span></nav>
+      <span class="eyebrow">Aesthetic services · Rhode Island</span>
+      <h1 class="display-xl">Treatments, tailored to&nbsp;you.</h1>
+      <p class="lead">Every service is delivered one-on-one by a board-certified physician assistant, with a natural-first approach. Explore what we offer—then book a consultation and we'll build the right plan together.</p>
+      <div class="cat-nav">
+        <a href="#botox">Botox &amp; Neurotoxins</a>
+        <a href="#filler">Dermal Fillers</a>
+        <a href="#lips">Lip Enhancement</a>
+        <a href="#skin">Skin Rejuvenation</a>
+        <a href="#more">Wellness &amp; more</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TREATMENTS -->
+<section class="section">
+  <div class="wrap">
+
+    <!-- Botox -->
+    <div class="treat" id="botox">
+      <div class="treat-media tm-1 reveal" role="img" aria-label="Botox treatment photo placeholder"><span class="tm-tag">Botox &amp; neurotoxins</span></div>
+      <div class="reveal">
+        <span class="eyebrow">Wrinkle relaxers</span>
+        <h2 class="h2">Botox &amp; Neurotoxins</h2>
+        <p>Soften the lines that make you look tired or tense—while keeping your expressions natural and your movement your own. A quick, comfortable treatment with no downtime.</p>
+        <div class="treat-chips">
+          <span class="tchip">⏱ 10–20 min</span>
+          <span class="tchip">Results in 3–7 days</span>
+          <span class="tchip">Lasts ~3–4 months</span>
+          <span class="tchip">No downtime</span>
+        </div>
+        <ul class="tlist">
+          <li>Forehead lines &amp; the "11s" between brows</li>
+          <li>Crow's feet around the eyes</li>
+          <li>Bunny lines, lip flip &amp; subtle brow lift</li>
+          <li>Preventative "baby Botox" for early lines</li>
+        </ul>
+        <p class="price-line"><b>Personalized pricing</b> · finalized at your consultation</p>
+        <a class="btn" href="04-contact.html#book">Book Botox consult</a>
+      </div>
+    </div>
+
+    <!-- Filler -->
+    <div class="treat -rev" id="filler">
+      <div class="treat-media tm-2 reveal" role="img" aria-label="Dermal filler treatment photo placeholder"><span class="tm-tag">Dermal fillers</span></div>
+      <div class="reveal">
+        <span class="eyebrow">Volume &amp; contour</span>
+        <h2 class="h2">Dermal Fillers</h2>
+        <p>Restore the volume time takes away and refine your natural contours with precisely placed hyaluronic-acid filler. The goal is always balance—refreshed, never overfilled.</p>
+        <div class="treat-chips">
+          <span class="tchip">⏱ 30–45 min</span>
+          <span class="tchip">Immediate results</span>
+          <span class="tchip">Lasts ~6–18 months</span>
+          <span class="tchip">Minimal downtime</span>
+        </div>
+        <ul class="tlist">
+          <li>Cheeks &amp; midface volume</li>
+          <li>Smile lines (nasolabial folds) &amp; marionette lines</li>
+          <li>Jawline &amp; chin definition</li>
+          <li>Under-eye hollows (tear trough)</li>
+        </ul>
+        <p class="price-line"><b>Personalized pricing</b> · finalized at your consultation</p>
+        <a class="btn" href="04-contact.html#book">Book filler consult</a>
+      </div>
+    </div>
+
+    <!-- Lips -->
+    <div class="treat" id="lips">
+      <div class="treat-media tm-3 reveal" role="img" aria-label="Lip enhancement photo placeholder"><span class="tm-tag">Lip enhancement</span></div>
+      <div class="reveal">
+        <span class="eyebrow">Soft, balanced lips</span>
+        <h2 class="h2">Lip Enhancement</h2>
+        <p>Naturally proportioned, hydrated lips that suit the rest of your features. Whether you want a subtle hydration boost or a little more definition, the emphasis is on <em>balanced</em>—never "done."</p>
+        <div class="treat-chips">
+          <span class="tchip">⏱ 30–45 min</span>
+          <span class="tchip">Immediate results</span>
+          <span class="tchip">Lasts ~6–12 months</span>
+        </div>
+        <ul class="tlist">
+          <li>Subtle hydration &amp; definition</li>
+          <li>Balancing uneven lips</li>
+          <li>Smoothing vertical lip lines</li>
+          <li>Restoring age-related lip volume</li>
+        </ul>
+        <p class="price-line"><b>Personalized pricing</b> · finalized at your consultation</p>
+        <a class="btn" href="04-contact.html#book">Book lip consult</a>
+      </div>
+    </div>
+
+    <!-- Skin -->
+    <div class="treat -rev" id="skin">
+      <div class="treat-media tm-4 reveal" role="img" aria-label="Skin rejuvenation photo placeholder"><span class="tm-tag">Skin rejuvenation</span></div>
+      <div class="reveal">
+        <span class="eyebrow">Glow &amp; texture</span>
+        <h2 class="h2">Skin Rejuvenation</h2>
+        <p>Improve tone, texture and that lit-from-within radiance with treatments like microneedling and medical-grade skincare—tailored to your skin and your goals.</p>
+        <div class="treat-chips">
+          <span class="tchip">⏱ 30–60 min</span>
+          <span class="tchip">Series recommended</span>
+          <span class="tchip">Little to no downtime</span>
+        </div>
+        <ul class="tlist">
+          <li>Microneedling for texture &amp; fine lines</li>
+          <li>Uneven tone, pores &amp; dullness</li>
+          <li>Medical-grade skincare guidance</li>
+          <li>Pre-event glow treatments</li>
+        </ul>
+        <p class="price-line"><b>Personalized pricing</b> · finalized at your consultation</p>
+        <a class="btn" href="04-contact.html#book">Book skin consult</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- MORE -->
+<section class="section -sm" id="more" style="background:var(--bg-2)">
+  <div class="wrap">
+    <div class="center reveal" style="max-width:600px;margin-inline:auto;margin-bottom:2.5rem">
+      <span class="eyebrow -center">More ways we help</span>
+      <h2 class="h2">Wellness &amp; consultations.</h2>
+    </div>
+    <div class="grid g-3">
+      <div class="card reveal">
+        <h3 class="h3">Wellness &amp; weight support</h3>
+        <p class="muted" style="margin:0">Medically supervised wellness options to complement your aesthetic goals from the inside out.</p>
+      </div>
+      <div class="card reveal">
+        <h3 class="h3">Complimentary consults</h3>
+        <p class="muted" style="margin:0">Not sure what you need? Start with a no-pressure consultation and an honest recommendation.</p>
+      </div>
+      <div class="card reveal">
+        <h3 class="h3">Special-event ready</h3>
+        <p class="muted" style="margin:0">Planning for a wedding or event? We'll map a timeline so you look your best on the day.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BEFORE / AFTER -->
+<section class="section">
+  <div class="wrap">
+    <div class="ba-grid">
+      <div class="reveal">
+        <span class="eyebrow">Real, natural results</span>
+        <h2 class="h2">Refreshed—not redone.</h2>
+        <p>The best results are the ones people can't quite place. Drag the slider to see the difference a conservative, considered approach makes.</p>
+        <p class="muted" style="font-size:.82rem">Replace with your own consented before/after photography, credited to your provider.</p>
+        <a class="btn" href="04-contact.html#book" style="margin-top:.5rem">Book your consultation</a>
+      </div>
+      <div class="reveal">
+        <div class="ba-stage" id="baStage">
+          <div class="ba-layer ba-before"><span class="ba-tag">Before</span></div>
+          <div class="ba-layer ba-after" id="baAfter" style="clip-path:inset(0 0 0 50%)"><span class="ba-tag">After</span></div>
+          <div class="ba-divider" id="baDivider"></div>
+          <div class="ba-handle" id="baHandle" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6 3 12l6 6M15 6l6 6-6 6"/></svg></div>
+          <input class="ba-range" id="baRange" type="range" min="0" max="100" value="50" aria-label="Reveal before and after comparison">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" style="background:var(--bg-2)">
+  <div class="wrap">
+    <div class="center reveal" style="max-width:600px;margin-inline:auto;margin-bottom:2.5rem">
+      <span class="eyebrow -center">Good to know</span>
+      <h2 class="h2">Common questions.</h2>
+    </div>
+    <div class="faq reveal">
+      <div class="faq-item">
+        <button class="faq-q" data-acc aria-expanded="false" aria-controls="faq1">Does it hurt?<span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>
+        <div class="faq-a" id="faq1" hidden><p>Most clients describe injectables as a quick pinch. We use fine needles, take our time, and can apply numbing for filler treatments to keep you comfortable throughout.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" data-acc aria-expanded="false" aria-controls="faq2">When will I see results, and how long do they last?<span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>
+        <div class="faq-a" id="faq2" hidden><p>Botox typically takes effect in 3–7 days and lasts about 3–4 months. Filler results are immediate and can last 6–18 months depending on the product and area. We'll review specifics for your plan.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" data-acc aria-expanded="false" aria-controls="faq3">Will I look overdone?<span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>
+        <div class="faq-a" id="faq3" hidden><p>That's exactly what we work to avoid. Our whole philosophy is conservative, natural-looking enhancement—we'd rather start subtle and build than overdo it.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" data-acc aria-expanded="false" aria-controls="faq4">How do I know which treatment is right for me?<span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>
+        <div class="faq-a" id="faq4" hidden><p>Start with a complimentary consultation. Giana will assess your features, listen to your goals, and give you an honest recommendation—including whether a treatment is worth it for you at all.</p></div>
+      </div>
+      <div class="faq-item">
+        <button class="faq-q" data-acc aria-expanded="false" aria-controls="faq5">Can I split the cost?<span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></button>
+        <div class="faq-a" id="faq5" hidden><p>Yes. We offer simple financing so you can spread treatment costs into easy monthly payments. See our <a href="05-payment-plans.html">payment plans</a> for details.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FINANCE TEASER -->
+<section class="section">
+  <div class="wrap">
+    <div class="finance">
+      <div class="wrap">
+        <div class="reveal">
+          <span class="eyebrow">Payment plans</span>
+          <h2 class="h2">Treat now. Pay over time.</h2>
+          <p style="color:var(--plum-deep);max-width:52ch">Split any treatment into easy monthly payments with quick, no-hard-credit-check financing.</p>
+          <div class="fin-badges">
+            <span class="fin-chip">Fast approval</span>
+            <span class="fin-chip">0% options available</span>
+          </div>
+        </div>
+        <div class="fin-cta reveal"><a class="btn -lg" href="05-payment-plans.html">See payment plans</a></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA BAND -->
+<section class="cta-band">
+  <div class="wrap">
+    <h2 class="h2">Not sure where to start?</h2>
+    <p>Book a complimentary consultation and we'll build a plan around your goals, your face and your budget.</p>
+    <div class="cta-actions">
+      <a class="btn -light -lg" href="04-contact.html#book">Book a consultation</a>
+      <a class="btn -ghost -lg" href="tel:+14017995572" style="color:#fff;border-color:rgba(255,255,255,.4)">(401) 799-5572</a>
+    </div>
+  </div>
+</section>

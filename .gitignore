@@ -11,3 +11,6 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+
+# Redesign QA render artifacts (regenerated on demand, not source)
+redesign/qa/
