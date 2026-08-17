@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Test / coverage artifacts
+.coverage
+.coverage.*
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
