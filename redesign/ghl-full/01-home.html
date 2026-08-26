@@ -1,0 +1,872 @@
+<!-- Home · Aesthetics Med & Wellness by G — paste into a full-width Custom Code/HTML element on a blank page -->
+<style>
+/* ============================================================================
+   AESTHETICS MED & WELLNESS BY G — REDESIGN (Home)
+   ----------------------------------------------------------------------------
+   COLOR SCHEME = design tokens below. This is a placeholder palette (warm
+   blush / plum / gold) chosen for the brand + 2026 med-spa best practice.
+   To match your existing site exactly, edit ONLY the values in :root.
+   ========================================================================== */
+@import url('https://fonts.googleapis.com/css2?family=Gloock&display=swap');
+
+:root{
+  /* ---- Brand palette (swap these to match your site) ---- */
+  --bg:#FAF6F1;          /* warm ivory page background */
+  --bg-2:#F4EBE2;        /* soft sand section background */
+  --surface:#FFFFFF;     /* cards */
+  --blush:#EAD8D1;       /* blush tint */
+  --rose:#CE9A92;        /* dusty rose */
+  --rose-deep:#B87E77;   /* deeper rose */
+  --plum:#5E3B47;        /* primary brand / CTA */
+  --plum-deep:#43272F;   /* hover / deep */
+  --plum-soft:#7A5460;   /* soft plum text */
+  --gold:#B08B4F;        /* refined gold accent (AA on cream for bold/large) */
+  --gold-soft:#D9C39A;   /* soft gold */
+  --ink:#2A2320;         /* headings text (warm near-black) */
+  --ink-2:#584D47;       /* body text */
+  --muted:#8A7E76;       /* muted labels */
+  --line:#E7D8CD;        /* hairlines */
+  --line-2:#EFE4D8;      /* faint hairlines */
+
+  /* ---- Type ---- */
+  --display:"Gloock", "Hoefler Text", "Georgia", "Times New Roman", serif;
+  --sans:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+
+  /* ---- Spacing scale ---- */
+  --sp-1:.5rem; --sp-2:1rem; --sp-3:1.5rem; --sp-4:2rem; --sp-5:3rem;
+  --sp-6:4rem; --sp-7:6rem; --sp-8:8rem;
+
+  --maxw:1200px;
+  --radius:18px; --radius-sm:12px; --radius-lg:28px;
+  --shadow-sm:0 1px 2px rgba(42,35,32,.04), 0 2px 8px rgba(42,35,32,.05);
+  --shadow:0 10px 30px -12px rgba(67,39,47,.22), 0 4px 12px -6px rgba(67,39,47,.14);
+  --shadow-lg:0 30px 60px -20px rgba(67,39,47,.34);
+  --ease:cubic-bezier(.22,.61,.36,1);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%; scroll-behavior:smooth; overflow-x:hidden}
+@media (prefers-reduced-motion:reduce){ html{scroll-behavior:auto} }
+body{
+  margin:0; background:var(--bg); color:var(--ink-2);
+  font-family:var(--sans); font-size:1.0625rem; line-height:1.65;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+  overflow-x:hidden;
+}
+h1,h2,h3,h4{color:var(--ink); font-weight:400; line-height:1.08; margin:0 0 .4em; letter-spacing:-.01em}
+h1,h2,h3{font-family:var(--display)}
+p{margin:0 0 1rem}
+a{color:var(--plum); text-decoration:none}
+img{max-width:100%; display:block}
+::selection{background:var(--rose); color:#fff}
+
+.wrap{max-width:var(--maxw); margin-inline:auto; padding-inline:clamp(1.15rem,4vw,2.5rem)}
+.section{padding-block:clamp(3.5rem,8vw,7rem)}
+.eyebrow{font-size:.72rem; text-transform:uppercase; letter-spacing:.2em; font-weight:700;
+  color:var(--gold); display:inline-flex; align-items:center; gap:.6rem; margin:0 0 1rem}
+.eyebrow::before{content:""; width:26px; height:1px; background:var(--gold); opacity:.7}
+.eyebrow.-center::after{content:""; width:26px; height:1px; background:var(--gold); opacity:.7}
+.lead{font-size:1.2rem; line-height:1.6; color:var(--ink-2); max-width:60ch}
+.display-xl{font-family:var(--display); font-weight:400; color:var(--ink);
+  font-size:clamp(2.7rem,6.4vw,5.1rem); line-height:1.02; letter-spacing:-.02em}
+.h2{font-size:clamp(1.9rem,3.8vw,3rem)}
+.center{text-align:center} .mx-auto{margin-inline:auto}
+.muted{color:var(--muted)}
+.plum{color:var(--plum)} .accent{color:var(--gold)}
+.serif-em{font-family:var(--display); font-style:normal}
+
+/* Skip link */
+.skip{position:absolute; left:-999px; top:0; background:var(--plum); color:#fff;
+  padding:.75rem 1.25rem; border-radius:0 0 10px 0; z-index:200}
+.skip:focus{left:0}
+
+/* Buttons */
+.btn{--b:var(--plum); --f:#fff;
+  display:inline-flex; align-items:center; justify-content:center; gap:.55rem;
+  font-family:var(--sans); font-size:.95rem; font-weight:600; letter-spacing:.01em;
+  padding:.95rem 1.6rem; border-radius:100px; border:1.5px solid var(--b);
+  background:var(--b); color:var(--f); cursor:pointer;
+  transition:transform .25s var(--ease), box-shadow .25s var(--ease), background .25s var(--ease), color .2s;
+  min-height:48px; text-align:center}
+.btn:hover{transform:translateY(-2px); box-shadow:var(--shadow)}
+.btn:focus-visible{outline:3px solid var(--rose); outline-offset:3px}
+.btn.-deep{--b:var(--plum-deep)}
+.btn.-ghost{background:transparent; color:var(--plum); border-color:var(--line)}
+.btn.-ghost:hover{border-color:var(--plum); background:#fff}
+.btn.-gold{--b:var(--gold); --f:#fff}
+.btn.-light{--b:#fff; --f:var(--plum); border-color:#fff}
+.btn.-lg{padding:1.1rem 2rem; font-size:1.02rem}
+.btn .ic{width:18px;height:18px}
+
+.link-arrow{display:inline-flex; align-items:center; gap:.45rem; font-weight:600; color:var(--plum);
+  border-bottom:1.5px solid transparent; padding-bottom:2px; transition:gap .25s var(--ease), border-color .25s}
+.link-arrow:hover{gap:.75rem; border-color:var(--rose)}
+
+/* ============================ TOP BAR ============================ */
+.topbar{background:var(--plum-deep); color:#F3E8DE; font-size:.82rem}
+.topbar .wrap{display:flex; align-items:center; justify-content:center; gap:1.5rem;
+  padding-block:.55rem; flex-wrap:wrap; text-align:center}
+.topbar a{color:#fff; font-weight:600}
+.topbar .dot{width:4px;height:4px;border-radius:50%;background:var(--rose);display:inline-block}
+.topbar .tb-hide{opacity:.85}
+@media (max-width:640px){ .topbar .tb-hide{display:none} }
+
+/* ============================ HEADER ============================ */
+.site-header{position:sticky; top:0; z-index:100; background:rgba(250,246,241,.82);
+  backdrop-filter:saturate(1.4) blur(14px); border-bottom:1px solid transparent;
+  transition:border-color .3s, box-shadow .3s, background .3s}
+.site-header.-scrolled{border-color:var(--line); box-shadow:var(--shadow-sm); background:rgba(250,246,241,.95)}
+.nav{display:flex; align-items:center; justify-content:space-between; gap:1rem; padding-block:.9rem}
+.brand{display:flex; align-items:center; gap:.7rem; line-height:1}
+.brand-mark{width:44px;height:44px;flex:none}
+.brand-txt{display:flex; flex-direction:column}
+.brand-name{font-family:var(--display); font-size:1.18rem; color:var(--ink); letter-spacing:.01em}
+.brand-sub{font-size:.62rem; text-transform:uppercase; letter-spacing:.24em; color:var(--gold); font-weight:700}
+.nav-links{display:flex; align-items:center; gap:.35rem; list-style:none; margin:0; padding:0}
+.nav-links a{color:var(--ink); font-weight:500; font-size:.96rem; padding:.55rem .85rem; border-radius:8px;
+  transition:color .2s, background .2s}
+.nav-links a:hover{color:var(--plum); background:var(--bg-2)}
+.nav-cta{display:flex; align-items:center; gap:.6rem}
+.nav-phone{display:inline-flex; align-items:center; gap:.45rem; font-weight:600; color:var(--ink); font-size:.95rem}
+.nav-toggle{display:none; background:none; border:1.5px solid var(--line); border-radius:10px; width:46px;height:46px;
+  cursor:pointer; align-items:center; justify-content:center; color:var(--plum)}
+.nav-toggle svg{width:22px;height:22px}
+@media (max-width:960px){
+  .nav-links, .nav-cta{display:none}
+  .nav-toggle{display:inline-flex}
+}
+/* Mobile menu */
+.mobile-menu{position:fixed; inset:0 0 0 auto; width:min(88vw,360px); background:var(--bg);
+  transform:translateX(100%); transition:transform .4s var(--ease); z-index:150; box-shadow:var(--shadow-lg);
+  padding:1.5rem; display:flex; flex-direction:column; gap:.25rem; overflow-y:auto}
+.mobile-menu.-open{transform:translateX(0)}
+.mobile-menu a{color:var(--ink); font-size:1.15rem; padding:.9rem .5rem; border-bottom:1px solid var(--line-2); font-weight:500}
+.mobile-menu .mm-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem}
+.mm-close{background:none;border:none;cursor:pointer;color:var(--plum); width:44px;height:44px}
+.scrim{position:fixed; inset:0; background:rgba(43,26,32,.4); opacity:0; visibility:hidden; transition:.3s; z-index:140}
+.scrim.-on{opacity:1; visibility:visible}
+
+/* ============================ HERO ============================ */
+.hero{position:relative; overflow:hidden}
+.hero::before{content:""; position:absolute; inset:0; z-index:0;
+  background:
+    radial-gradient(60% 55% at 82% 18%, rgba(206,154,146,.34), transparent 62%),
+    radial-gradient(50% 50% at 92% 60%, rgba(176,139,79,.16), transparent 60%),
+    radial-gradient(70% 60% at 6% 92%, rgba(94,59,71,.10), transparent 60%)}
+.hero .wrap{position:relative; z-index:1}
+.hero-grid{display:grid; grid-template-columns:1.05fr .95fr; gap:clamp(2rem,4vw,4rem); align-items:center;
+  padding-block:clamp(2.5rem,6vw,5rem)}
+.hero-copy{max-width:600px}
+.hero h1{margin-top:.4rem}
+.hero .lead{margin:1.4rem 0 2rem}
+.hero-cta{display:flex; gap:.8rem; flex-wrap:wrap; margin-bottom:2.2rem}
+.hero-trust{display:flex; gap:1.6rem; flex-wrap:wrap; align-items:center; padding-top:1.5rem; border-top:1px solid var(--line)}
+.trust-item{display:flex; align-items:center; gap:.6rem; font-size:.86rem; color:var(--ink-2); font-weight:500}
+.trust-item .ti-num{font-family:var(--display); font-size:1.5rem; color:var(--plum); line-height:1}
+.stars{color:var(--gold); letter-spacing:.05em; font-size:.95rem}
+
+/* Hero visual — signature "aura" + portrait placeholder + credential card */
+.hero-visual{position:relative; aspect-ratio:4/5; min-height:380px}
+.aura{position:absolute; inset:-6% -4% -6% -4%; z-index:0; border-radius:50%;
+  background:radial-gradient(circle at 50% 45%, rgba(234,216,209,.9), rgba(206,154,146,.5) 45%, rgba(94,59,71,.12) 72%, transparent 78%);
+  filter:blur(6px); animation:breathe 9s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+.portrait{position:absolute; inset:6% 8%; z-index:1; border-radius:180px 180px 26px 26px; overflow:hidden;
+  background:
+     linear-gradient(160deg, #F0DCd3 0%, #E4C0B7 40%, #C79A91 78%, #8f6a67 100%);
+  box-shadow:var(--shadow-lg); border:1px solid rgba(255,255,255,.5)}
+.portrait::after{content:"Your hero portrait"; position:absolute; inset:0; display:flex; align-items:flex-end; justify-content:center;
+  padding-bottom:1.4rem; color:rgba(255,255,255,.9); font-size:.78rem; letter-spacing:.16em; text-transform:uppercase}
+.portrait .ph-ic{position:absolute; inset:0; margin:auto; width:60px;height:60px; opacity:.55; color:#fff}
+.cred-card{position:absolute; left:-6%; bottom:8%; z-index:2; background:var(--surface); border-radius:16px;
+  box-shadow:var(--shadow); padding:.95rem 1.15rem; display:flex; gap:.75rem; align-items:center; max-width:240px;
+  border:1px solid var(--line-2)}
+.cred-card .cc-ic{width:42px;height:42px;border-radius:12px;background:var(--blush); color:var(--plum);
+  display:flex;align-items:center;justify-content:center;flex:none}
+.cred-card .cc-t{font-family:var(--display); font-size:1.02rem; color:var(--ink); line-height:1.1}
+.cred-card .cc-s{font-size:.74rem; color:var(--muted)}
+.badge-float{position:absolute; right:-2%; top:6%; z-index:2; background:var(--plum); color:#fff;
+  border-radius:14px; padding:.7rem .9rem; box-shadow:var(--shadow); text-align:center}
+.badge-float .bf-n{font-family:var(--display); font-size:1.35rem; line-height:1}
+.badge-float .bf-l{font-size:.62rem; text-transform:uppercase; letter-spacing:.14em; opacity:.85}
+@media (max-width:860px){
+  .hero-grid{grid-template-columns:1fr; gap:2.5rem}
+  .hero-visual{max-width:420px; margin-inline:auto; width:100%}
+}
+@media (max-width:520px){
+  .cred-card{left:0; bottom:4%; max-width:210px; padding:.75rem .9rem}
+  .cred-card .cc-t{font-size:.92rem}
+  .badge-float{display:none}
+  .portrait::after{padding-bottom:.9rem; font-size:.68rem}
+  .hero-cta{flex-direction:column; align-items:stretch}
+  .hero-cta .btn{width:100%}
+  .hero-trust{gap:1.1rem}
+}
+
+/* ============================ MARQUEE / BRAND TRUST ============================ */
+.brandstrip{background:var(--plum-deep); color:#EFE0D6}
+.brandstrip .wrap{display:flex; align-items:center; justify-content:space-between; gap:2rem; flex-wrap:wrap;
+  padding-block:1.4rem}
+.brandstrip .bs-label{font-size:.72rem; text-transform:uppercase; letter-spacing:.2em; color:var(--gold-soft); font-weight:700}
+.brandstrip ul{display:flex; gap:2.2rem; list-style:none; margin:0; padding:0; flex-wrap:wrap; align-items:center}
+.brandstrip li{font-family:var(--display); font-size:1.25rem; opacity:.9; letter-spacing:.02em}
+
+/* ============================ MEET G ============================ */
+.split{display:grid; grid-template-columns:1fr 1fr; gap:clamp(2rem,5vw,4.5rem); align-items:center}
+@media (max-width:860px){ .split{grid-template-columns:1fr; gap:2.5rem} }
+.founder-photo{aspect-ratio:1/1.12; border-radius:var(--radius-lg); position:relative; overflow:hidden;
+  background:linear-gradient(150deg,#EFE0D6,#D9B6AD 55%, #9c7570); box-shadow:var(--shadow)}
+.founder-photo .ph-tag{position:absolute; inset:auto 0 0 0; padding:1rem; text-align:center; color:rgba(255,255,255,.9);
+  font-size:.74rem; letter-spacing:.16em; text-transform:uppercase; background:linear-gradient(transparent,rgba(71,42,52,.45))}
+.founder-photo .sig{position:absolute; top:1.2rem; left:1.4rem; font-family:var(--display); color:#fff; font-size:2.4rem; opacity:.9}
+.founder-quote{font-family:var(--display); font-size:clamp(1.5rem,2.6vw,2rem); color:var(--ink); line-height:1.28; margin:1rem 0 1.5rem}
+.founder-meta{display:flex; align-items:center; gap:1rem; margin-top:1.75rem; padding-top:1.5rem; border-top:1px solid var(--line)}
+.founder-meta .fm-name{font-family:var(--display); font-size:1.15rem; color:var(--ink)}
+.founder-meta .fm-role{font-size:.85rem; color:var(--muted)}
+
+/* ============================ SERVICES ============================ */
+.svc-head{display:flex; align-items:flex-end; justify-content:space-between; gap:2rem; flex-wrap:wrap; margin-bottom:2.5rem}
+.svc-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:1.25rem}
+@media (max-width:900px){ .svc-grid{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:600px){ .svc-grid{grid-template-columns:1fr} }
+.svc-card{background:var(--surface); border:1px solid var(--line-2); border-radius:var(--radius); padding:1.75rem;
+  transition:transform .3s var(--ease), box-shadow .3s var(--ease), border-color .3s; position:relative; overflow:hidden}
+.svc-card::after{content:""; position:absolute; inset:0 0 auto 0; height:3px; background:linear-gradient(90deg,var(--rose),var(--gold)); transform:scaleX(0); transform-origin:left; transition:transform .35s var(--ease)}
+.svc-card:hover{transform:translateY(-5px); box-shadow:var(--shadow); border-color:transparent}
+.svc-card:hover::after{transform:scaleX(1)}
+.svc-ic{width:54px;height:54px;border-radius:14px;background:var(--bg-2); color:var(--plum);
+  display:flex;align-items:center;justify-content:center; margin-bottom:1.1rem}
+.svc-ic svg{width:28px;height:28px}
+.svc-card h3{font-size:1.35rem; margin-bottom:.4rem}
+.svc-card p{font-size:.96rem; margin-bottom:1rem}
+.svc-price{font-size:.82rem; color:var(--gold); font-weight:700; text-transform:uppercase; letter-spacing:.08em; margin-bottom:.9rem}
+
+/* ============================ BEFORE / AFTER ============================ */
+.ba-section{background:var(--bg-2)}
+.ba-grid{display:grid; grid-template-columns:.9fr 1.1fr; gap:clamp(2rem,4vw,3.5rem); align-items:center}
+@media (max-width:860px){ .ba-grid{grid-template-columns:1fr} }
+.ba-stage{position:relative; aspect-ratio:4/3; border-radius:var(--radius-lg); overflow:hidden; box-shadow:var(--shadow); user-select:none; touch-action:none; border:1px solid var(--line)}
+.ba-layer{position:absolute; inset:0; display:flex; align-items:flex-end; padding:1rem 1.2rem; color:#fff; font-size:.72rem;
+  letter-spacing:.16em; text-transform:uppercase; font-weight:600}
+.ba-before{background:linear-gradient(135deg,#c9b6ad,#a98d84)}
+.ba-after{background:linear-gradient(135deg,#F0DCD2,#D2a99f); clip-path:inset(0 0 0 50%)}
+.ba-after .ba-tag{margin-left:auto}
+.ba-divider{position:absolute; top:0; bottom:0; left:50%; width:2px; background:#fff; box-shadow:0 0 0 1px rgba(0,0,0,.05); z-index:3}
+.ba-handle{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:4; width:46px;height:46px;border-radius:50%;
+  background:#fff; box-shadow:var(--shadow); display:flex;align-items:center;justify-content:center; cursor:ew-resize; color:var(--plum)}
+.ba-range{position:absolute; inset:0; z-index:5; width:100%; height:100%; margin:0; opacity:0; cursor:ew-resize}
+.ba-note{font-size:.82rem; color:var(--muted); margin-top:1rem}
+
+/* ============================ WHY / VALUES ============================ */
+.values{display:grid; grid-template-columns:repeat(4,1fr); gap:1.25rem}
+@media (max-width:900px){ .values{grid-template-columns:repeat(2,1fr)} }
+@media (max-width:520px){ .values{grid-template-columns:1fr} }
+.value{padding:1.5rem; border-radius:var(--radius); background:var(--surface); border:1px solid var(--line-2)}
+.value .v-ic{width:46px;height:46px;color:var(--plum); background:var(--blush); border-radius:12px; display:flex;align-items:center;justify-content:center; margin-bottom:1rem}
+.value h3{font-size:1.15rem; font-family:var(--sans); font-weight:700; letter-spacing:0}
+.value p{font-size:.92rem; margin:0}
+
+/* ============================ PROCESS ============================ */
+.process{background:var(--plum); color:#F3E8DE; border-radius:var(--radius-lg); overflow:hidden; position:relative}
+.process::before{content:""; position:absolute; inset:0; background:
+  radial-gradient(50% 60% at 90% 10%, rgba(176,139,79,.28), transparent 60%),
+  radial-gradient(50% 60% at 5% 100%, rgba(206,154,146,.22), transparent 60%)}
+.process .wrap{position:relative; padding-block:clamp(3rem,6vw,5rem)}
+.process h2{color:#fff}
+.steps{display:grid; grid-template-columns:repeat(3,1fr); gap:1.5rem; margin-top:2.5rem}
+@media (max-width:760px){ .steps{grid-template-columns:1fr} }
+.step{position:relative; padding-top:1.25rem}
+.step .s-n{font-family:var(--display); font-size:2.6rem; color:var(--gold-soft); line-height:1; display:block; margin-bottom:.5rem}
+.step h3{color:#fff; font-size:1.3rem}
+.step p{color:#E7D4CB; font-size:.95rem; margin:0}
+.step::before{content:""; position:absolute; top:0; left:0; width:44px; height:2px; background:var(--gold)}
+
+/* ============================ TESTIMONIALS ============================ */
+.tsts{display:grid; grid-template-columns:repeat(3,1fr); gap:1.25rem}
+@media (max-width:900px){ .tsts{grid-template-columns:1fr} }
+.tst{background:var(--surface); border:1px solid var(--line-2); border-radius:var(--radius); padding:1.75rem; position:relative}
+.tst .q{font-family:var(--display); font-size:2.6rem; color:var(--rose); line-height:.6; height:1.1rem}
+.tst p{font-size:1rem; color:var(--ink-2); margin:.6rem 0 1.25rem}
+.tst .stars{margin-bottom:.75rem; display:block}
+.tst-who{display:flex; align-items:center; gap:.75rem}
+.tst-av{width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,var(--blush),var(--rose)); flex:none}
+.tst-name{font-weight:700; color:var(--ink); font-size:.92rem}
+.tst-src{font-size:.78rem; color:var(--muted)}
+
+/* ============================ FINANCE TEASER ============================ */
+.finance{background:linear-gradient(135deg,var(--blush),#F5E7DF); border-radius:var(--radius-lg); overflow:hidden}
+.finance .wrap{display:grid; grid-template-columns:1.3fr .7fr; gap:2rem; align-items:center; padding-block:clamp(2.5rem,5vw,4rem)}
+@media (max-width:760px){ .finance .wrap{grid-template-columns:1fr; text-align:center} .finance .fin-cta{justify-content:center} }
+.finance h2{color:var(--plum-deep)}
+.fin-cta{display:flex; gap:.8rem; flex-wrap:wrap}
+.fin-badges{display:flex; gap:1rem; align-items:center; margin-top:1rem; flex-wrap:wrap}
+.fin-chip{background:rgba(255,255,255,.7); border-radius:100px; padding:.4rem .9rem; font-size:.82rem; font-weight:600; color:var(--plum)}
+
+/* ============================ LOCATION ============================ */
+.loc-grid{display:grid; grid-template-columns:1fr 1fr; gap:2.5rem; align-items:stretch}
+@media (max-width:860px){ .loc-grid{grid-template-columns:1fr} }
+.loc-info .loc-row{display:flex; gap:1rem; padding:1.15rem 0; border-bottom:1px solid var(--line)}
+.loc-info .loc-row:last-child{border-bottom:none}
+.loc-ic{width:42px;height:42px;flex:none;border-radius:12px;background:var(--bg-2);color:var(--plum);display:flex;align-items:center;justify-content:center}
+.loc-row h4{font-family:var(--sans); font-weight:700; font-size:.95rem; letter-spacing:0; margin-bottom:.15rem; color:var(--ink)}
+.loc-row p{margin:0; font-size:.95rem}
+.map-ph{border-radius:var(--radius-lg); overflow:hidden; min-height:340px; position:relative;
+  background:
+    linear-gradient(120deg, #EDE3D8, #E4D2C8);
+  border:1px solid var(--line); display:flex; align-items:center; justify-content:center}
+.map-ph .mp-pin{width:56px;height:56px;color:var(--plum)}
+.map-ph .mp-tag{position:absolute; bottom:1rem; left:1rem; background:#fff; border-radius:10px; padding:.5rem .85rem; font-size:.8rem; font-weight:600; color:var(--ink); box-shadow:var(--shadow-sm)}
+
+/* ============================ FINAL CTA ============================ */
+.cta-band{background:var(--plum-deep); color:#fff; position:relative; overflow:hidden}
+.cta-band::before{content:""; position:absolute; inset:0; background:
+  radial-gradient(40% 80% at 85% 20%, rgba(206,154,146,.3), transparent 60%),
+  radial-gradient(40% 80% at 10% 90%, rgba(176,139,79,.22), transparent 60%)}
+.cta-band .wrap{position:relative; text-align:center; padding-block:clamp(3.5rem,7vw,6rem)}
+.cta-band h2{color:#fff; margin-bottom:1rem}
+.cta-band p{color:#EAD9D0; max-width:52ch; margin:0 auto 2rem}
+.cta-actions{display:flex; gap:.8rem; justify-content:center; flex-wrap:wrap}
+
+/* ============================ FOOTER ============================ */
+.footer{background:#211217; color:#C9B6AD; font-size:.92rem}
+.footer .wrap{padding-block:clamp(3rem,5vw,4.5rem)}
+.foot-grid{display:grid; grid-template-columns:1.6fr 1fr 1fr 1.2fr; gap:2rem}
+@media (max-width:860px){ .foot-grid{grid-template-columns:1fr 1fr} }
+@media (max-width:520px){ .foot-grid{grid-template-columns:1fr} }
+.footer h4{color:#fff; font-family:var(--sans); font-weight:700; font-size:.8rem; text-transform:uppercase; letter-spacing:.14em; margin-bottom:1.1rem}
+.footer a{color:#C9B6AD; display:block; padding:.3rem 0; transition:color .2s}
+.footer a:hover{color:#fff}
+.foot-brand .brand-name{color:#fff}
+.foot-brand p{max-width:34ch; margin-top:1rem; font-size:.9rem; color:#B39A91}
+.foot-social{display:flex; gap:.6rem; margin-top:1.25rem}
+.foot-social a{width:40px;height:40px;border:1px solid rgba(255,255,255,.16); border-radius:10px; display:flex;align-items:center;justify-content:center; padding:0}
+.foot-social svg{width:19px;height:19px}
+.foot-bottom{border-top:1px solid rgba(255,255,255,.1); margin-top:2.5rem; padding-top:1.5rem;
+  display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; font-size:.82rem; color:#9C837A}
+.foot-bottom a{display:inline; color:#9C837A}
+
+/* Reveal on scroll */
+.reveal{opacity:0; transform:translateY(24px); transition:opacity .7s var(--ease), transform .7s var(--ease)}
+.reveal.-in{opacity:1; transform:none}
+@media (prefers-reduced-motion:reduce){
+  .reveal{opacity:1; transform:none; transition:none}
+  .aura{animation:none}
+}
+.amw-root{width:100vw;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw);background:var(--bg);color:var(--ink-2);font-family:var(--sans);font-size:1.0625rem;line-height:1.65;text-align:left;overflow-x:clip}
+</style>
+<div class="amw-root">
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="wrap">
+    <span class="tb-hide">✦ Board-certified PA-led care</span>
+    <span class="dot tb-hide"></span>
+    <span class="tb-hide">Johnston &amp; East Providence, RI</span>
+    <span class="dot tb-hide"></span>
+    <a href="tel:+14017995572">Call (401)&nbsp;799-5572</a>
+    <span class="dot tb-hide"></span>
+    <span class="tb-hide">Walk-ins welcome</span>
+  </div>
+</div>
+
+<!-- HEADER -->
+<header class="site-header" id="siteHeader">
+  <div class="wrap">
+    <nav class="nav" aria-label="Primary">
+      <a class="brand" href="#" aria-label="Aesthetics Med and Wellness by G — home">
+        <svg class="brand-mark" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+          <circle cx="24" cy="24" r="23" fill="#5E3B47"/>
+          <path d="M31.5 17.5c-2.2-1.8-6.4-1.9-9 .6-1 1-1.7 2.3-1.9 3.7-1.4.2-2.7.9-3.7 1.9-2.5 2.6-2.4 6.8-.6 9 .3.4.9.4 1.2 0 3.9-4.2 8.7-9 12.9-12.9 4.2-3.9 2.9-1.2 1.1-3.3Z" fill="#EAD8D1"/>
+          <path d="M24 14c4 4.5 6.5 8 6.5 12.2A6.5 6.5 0 0 1 24 32.7a6.5 6.5 0 0 1-6.5-6.5C17.5 22 20 18.5 24 14Z" fill="#CE9A92"/>
+        </svg>
+        <span class="brand-txt">
+          <span class="brand-name">Aesthetics by G</span>
+          <span class="brand-sub">Med &amp; Wellness</span>
+        </span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#" aria-current="page">Home</a></li>
+        <li><a href="/about">About</a></li>
+        <li><a href="/services">Services</a></li>
+        <li><a href="/payment-plans">Payment Plans</a></li>
+        <li><a href="/contact">Contact</a></li>
+      </ul>
+      <div class="nav-cta">
+        <a class="nav-phone" href="tel:+14017995572" aria-label="Call (401) 799-5572">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3.1-8.7A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.4-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg>
+          (401) 799-5572
+        </a>
+        <a class="btn" href="#book">Book Consultation</a>
+      </div>
+      <button class="nav-toggle" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="mobileMenu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<!-- MOBILE MENU -->
+<div class="scrim" id="scrim"></div>
+<aside class="mobile-menu" id="mobileMenu" aria-label="Mobile menu" aria-hidden="true">
+  <div class="mm-top">
+    <span class="brand-name">Aesthetics by G</span>
+    <button class="mm-close" id="mmClose" aria-label="Close menu">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <a href="#" aria-current="page">Home</a>
+  <a href="/about">About</a>
+  <a href="/services">Services</a>
+  <a href="/payment-plans">Payment Plans</a>
+  <a href="/contact">Contact</a>
+  <a class="btn -lg" href="#book" style="margin-top:1.25rem">Book Consultation</a>
+  <a class="nav-phone" style="display:flex; margin-top:1rem; justify-content:center" href="tel:+14017995572">(401) 799-5572</a>
+</aside>
+
+<main id="main">
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <span class="eyebrow">Medical Aesthetics · Rhode Island</span>
+        <h1 class="display-xl">Look like <span class="serif-em" style="color:var(--plum)">you</span>—<br>only more rested.</h1>
+        <p class="lead">Natural-looking Botox, dermal filler and skin treatments, delivered one-on-one by a board-certified physician assistant with 13+ years of experience. No overdone results—just refreshed, confident, unmistakably&nbsp;you.</p>
+        <div class="hero-cta">
+          <a class="btn -lg" href="#book">Book a consultation</a>
+          <a class="btn -ghost -lg" href="/services">Explore treatments</a>
+        </div>
+        <div class="hero-trust">
+          <div class="trust-item"><span class="ti-num">13+</span> years<br>experience</div>
+          <div class="trust-item"><span class="ti-num">PA-C</span> Board-certified<br>provider</div>
+          <div class="trust-item">
+            <span class="stars" aria-hidden="true">★★★★★</span>
+            <span>Loved by<br>RI clients</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-visual">
+        <div class="aura" aria-hidden="true"></div>
+        <div class="portrait" role="img" aria-label="Placeholder for a hero portrait of the provider or a treatment moment">
+          <svg class="ph-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M3 16l5-5c1 1 2.5 1 3.5 0l4-4c1-1 2.5-1 3.5 0L21 9M3 20h18"/><circle cx="8.5" cy="8.5" r="1.8"/></svg>
+        </div>
+        <div class="cred-card">
+          <div class="cc-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12l2 2 4-4"/><path d="M12 3l7 3v5c0 4.5-3 8.5-7 9.5C8 19.5 5 15.5 5 11V6l7-3Z"/></svg></div>
+          <div>
+            <div class="cc-t">Giana Lewis-Fairley, PA-C</div>
+            <div class="cc-s">Your provider, every visit</div>
+          </div>
+        </div>
+        <div class="badge-float">
+          <div class="bf-n">100%</div>
+          <div class="bf-l">Personalized</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BRAND TRUST STRIP -->
+<div class="brandstrip">
+  <div class="wrap">
+    <span class="bs-label">Trusted products &amp; partners</span>
+    <ul>
+      <li>Botox® Cosmetic</li>
+      <li>Juvéderm®</li>
+      <li>Allē Rewards</li>
+      <li>Restylane®</li>
+      <li>SkinMedica®</li>
+    </ul>
+  </div>
+</div>
+
+<!-- MEET G -->
+<section class="section">
+  <div class="wrap">
+    <div class="split">
+      <div class="founder-photo reveal" role="img" aria-label="Placeholder portrait of Giana Lewis-Fairley, PA-C">
+        <span class="sig">G.</span>
+        <span class="ph-tag">Provider portrait</span>
+      </div>
+      <div class="reveal">
+        <span class="eyebrow">Meet your provider</span>
+        <h2 class="h2">Care that starts with listening—<br>and ends with results that feel like you.</h2>
+        <p class="founder-quote">“My goal isn't to change how you look. It's to help you look like the most rested, confident version of yourself.”</p>
+        <p>Giana Lewis-Fairley is a board-certified physician assistant who has spent more than a decade in medicine and aesthetics. She founded Aesthetics Med &amp; Wellness by G to offer something the big clinics often can't: unhurried consultations, honest recommendations, and a treatment plan built entirely around your face and your goals.</p>
+        <p>Every syringe, every unit, every visit—it's her hands and her eye, start to finish.</p>
+        <div class="founder-meta">
+          <div>
+            <div class="fm-name">Giana Lewis-Fairley, PA-C</div>
+            <div class="fm-role">Founder &amp; Aesthetic Provider</div>
+          </div>
+          <a class="btn -ghost" href="/about" style="margin-left:auto">Her story</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SERVICES -->
+<section class="section" style="background:var(--bg-2)">
+  <div class="wrap">
+    <div class="svc-head">
+      <div class="reveal">
+        <span class="eyebrow">Signature treatments</span>
+        <h2 class="h2">Subtle by design.</h2>
+      </div>
+      <a class="link-arrow reveal" href="/services">View all services
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </a>
+    </div>
+    <div class="svc-grid">
+      <article class="svc-card reveal">
+        <div class="svc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20c2-6 5-9 9-9M20 4c-1 8-5 12-11 13"/><path d="M14 4h6v6"/></svg></div>
+        <h3>Botox &amp; Neurotoxins</h3>
+        <div class="svc-price">Wrinkle relaxers</div>
+        <p>Soften forehead lines, frown lines and crow's feet while keeping your expressions natural and your movement intact.</p>
+        <a class="link-arrow" href="/services">Learn more
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </article>
+      <article class="svc-card reveal">
+        <div class="svc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c3 3.5 6 6.8 6 10.5a6 6 0 0 1-12 0C6 9.8 9 6.5 12 3Z"/></svg></div>
+        <h3>Dermal Fillers</h3>
+        <div class="svc-price">Volume &amp; contour</div>
+        <p>Restore lost volume in cheeks, smooth smile lines and refine your profile with precisely placed hyaluronic-acid filler.</p>
+        <a class="link-arrow" href="/services">Learn more
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </article>
+      <article class="svc-card reveal">
+        <div class="svc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.3-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.7-7 10-7 10Z"/></svg></div>
+        <h3>Lip Enhancement</h3>
+        <div class="svc-price">Soft, balanced lips</div>
+        <p>Hydrated, naturally proportioned lips—never overfilled. Subtle definition that suits the rest of your features.</p>
+        <a class="link-arrow" href="/services">Learn more
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </article>
+      <article class="svc-card reveal">
+        <div class="svc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18"/></svg></div>
+        <h3>Skin Rejuvenation</h3>
+        <div class="svc-price">Glow &amp; texture</div>
+        <p>Microneedling and medical-grade skin treatments that improve tone, texture and that lit-from-within radiance.</p>
+        <a class="link-arrow" href="/services">Learn more
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </article>
+      <article class="svc-card reveal">
+        <div class="svc-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v4M16 3v4M4 9h16M6 5h12a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/><path d="M9 14l2 2 4-4"/></svg></div>
+        <h3>Wellness &amp; Weight</h3>
+        <div class="svc-price">Feel your best</div>
+        <p>Medically supervised wellness support to complement your aesthetic goals from the inside out.</p>
+        <a class="link-arrow" href="/services">Learn more
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      </article>
+      <article class="svc-card reveal" style="background:var(--plum); color:#F3E8DE; border-color:transparent">
+        <div class="svc-ic" style="background:rgba(255,255,255,.12); color:#fff"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg></div>
+        <h3 style="color:#fff">Not sure where to start?</h3>
+        <p style="color:#E7D4CB">Book a complimentary consultation and we'll build a plan around your goals, your face and your budget.</p>
+        <a class="btn -light" href="#book">Book a consult</a>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- BEFORE / AFTER -->
+<section class="section ba-section">
+  <div class="wrap">
+    <div class="ba-grid">
+      <div class="reveal">
+        <span class="eyebrow">Real, natural results</span>
+        <h2 class="h2">The kind of result people can't quite place.</h2>
+        <p>Great aesthetic work doesn't announce itself. Drag the slider to see the difference a considered, conservative approach makes—refreshed, not redone.</p>
+        <p class="ba-note">Drag to compare. Replace with your own before/after photography—credited to your provider, with consent, per your compliance guidelines.</p>
+        <a class="btn" href="#book" style="margin-top:.5rem">Start your transformation</a>
+      </div>
+      <div class="reveal">
+        <div class="ba-stage" id="baStage">
+          <div class="ba-layer ba-before"><span class="ba-tag">Before</span></div>
+          <div class="ba-layer ba-after" id="baAfter"><span class="ba-tag">After</span></div>
+          <div class="ba-divider" id="baDivider"></div>
+          <div class="ba-handle" id="baHandle" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6 3 12l6 6M15 6l6 6-6 6"/></svg>
+          </div>
+          <input class="ba-range" id="baRange" type="range" min="0" max="100" value="50" aria-label="Reveal before and after comparison">
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- VALUES -->
+<section class="section">
+  <div class="wrap">
+    <div class="center reveal" style="max-width:640px; margin-inline:auto; margin-bottom:3rem">
+      <span class="eyebrow -center" style="justify-content:center">Why clients choose G</span>
+      <h2 class="h2">Boutique care, medical standards.</h2>
+    </div>
+    <div class="values">
+      <div class="value reveal">
+        <div class="v-ic"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.3-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 11c0 5.7-7 10-7 10Z"/></svg></div>
+        <h3>Natural-first philosophy</h3>
+        <p>Conservative dosing and an artistic eye. You'll look like you on your best day—never overdone.</p>
+      </div>
+      <div class="value reveal">
+        <div class="v-ic"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.5-7 9.5C8 19.5 5 15.5 5 11V6l7-3Z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <h3>One trusted provider</h3>
+        <p>A board-certified PA treats you at every visit—no rotating injectors, no rushed appointments.</p>
+      </div>
+      <div class="value reveal">
+        <div class="v-ic"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a5 5 0 0 0-5 5c0 3 5 9 5 9s5-6 5-9a5 5 0 0 0-5-5Z"/><circle cx="12" cy="7" r="1.6"/></svg></div>
+        <h3>Comfortable &amp; local</h3>
+        <p>An intimate, welcoming setting in Rhode Island—Johnston and East Providence. Walk-ins welcome.</p>
+      </div>
+      <div class="value reveal">
+        <div class="v-ic"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h18M7 15h4M6 4h12a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z"/></svg></div>
+        <h3>Flexible payments</h3>
+        <p>Treat now and pay over time with simple financing—so your plan fits your budget, not the reverse.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PROCESS -->
+<section class="section">
+  <div class="wrap">
+    <div class="process">
+      <div class="wrap">
+        <div class="center reveal" style="max-width:620px; margin-inline:auto">
+          <span class="eyebrow -center" style="justify-content:center; color:var(--gold-soft)">What to expect</span>
+          <h2 class="h2">Your visit, start to finish.</h2>
+        </div>
+        <div class="steps">
+          <div class="step reveal">
+            <span class="s-n">01</span>
+            <h3>Consultation</h3>
+            <p>We talk through what's bothering you and what you'd love to see. Honest guidance, zero pressure.</p>
+          </div>
+          <div class="step reveal">
+            <span class="s-n">02</span>
+            <h3>Personalized plan</h3>
+            <p>A treatment plan mapped to your features, your timeline and your budget—phased if that's smarter.</p>
+          </div>
+          <div class="step reveal">
+            <span class="s-n">03</span>
+            <h3>Natural results</h3>
+            <p>Precise, comfortable treatment and clear aftercare. We follow up to make sure you love it.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- TESTIMONIALS -->
+<section class="section" style="background:var(--bg-2)">
+  <div class="wrap">
+    <div class="center reveal" style="max-width:600px;margin-inline:auto;margin-bottom:3rem">
+      <span class="eyebrow -center" style="justify-content:center">Kind words</span>
+      <h2 class="h2">Rhode Island's natural-look favorite.</h2>
+    </div>
+    <div class="tsts">
+      <figure class="tst reveal">
+        <div class="q" aria-hidden="true">&ldquo;</div>
+        <span class="stars" aria-hidden="true">★★★★★</span>
+        <blockquote><p>Giana actually listened. I wanted subtle and that's exactly what I got—people just keep telling me I look well-rested.</p></blockquote>
+        <figcaption class="tst-who">
+          <span class="tst-av" aria-hidden="true"></span>
+          <span><span class="tst-name">Danielle R.</span><br><span class="tst-src">Botox · Johnston, RI</span></span>
+        </figcaption>
+      </figure>
+      <figure class="tst reveal">
+        <div class="q" aria-hidden="true">&ldquo;</div>
+        <span class="stars" aria-hidden="true">★★★★★</span>
+        <blockquote><p>First time getting filler and I was nervous. She explained everything and my lips look so natural. Found my provider for life.</p></blockquote>
+        <figcaption class="tst-who">
+          <span class="tst-av" aria-hidden="true"></span>
+          <span><span class="tst-name">Marissa T.</span><br><span class="tst-src">Lip filler · East Providence</span></span>
+        </figcaption>
+      </figure>
+      <figure class="tst reveal">
+        <div class="q" aria-hidden="true">&ldquo;</div>
+        <span class="stars" aria-hidden="true">★★★★★</span>
+        <blockquote><p>Clean, calm, and you never feel rushed. The financing made it easy to do everything I wanted in one plan.</p></blockquote>
+        <figcaption class="tst-who">
+          <span class="tst-av" aria-hidden="true"></span>
+          <span><span class="tst-name">Kayla B.</span><br><span class="tst-src">Filler + skin · RI</span></span>
+        </figcaption>
+      </figure>
+    </div>
+    <p class="center muted reveal" style="margin-top:2rem; font-size:.85rem">Sample testimonials for layout—swap in your real Google &amp; JaneApp reviews.</p>
+  </div>
+</section>
+
+<!-- FINANCE TEASER -->
+<section class="section">
+  <div class="wrap">
+    <div class="finance">
+      <div class="wrap">
+        <div class="reveal">
+          <span class="eyebrow">Payment plans</span>
+          <h2 class="h2">Treat now. Pay over time.</h2>
+          <p style="color:var(--plum-deep); max-width:52ch">Your confidence shouldn't wait for payday. Split your treatment into easy monthly payments with quick, no-hard-credit-check financing.</p>
+          <div class="fin-badges">
+            <span class="fin-chip">Fast approval</span>
+            <span class="fin-chip">0% options available</span>
+            <span class="fin-chip">Checkout in minutes</span>
+          </div>
+        </div>
+        <div class="fin-cta reveal">
+          <a class="btn -lg" href="/payment-plans">See payment plans</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- LOCATION -->
+<section class="section" id="book" style="background:var(--bg-2)">
+  <div class="wrap">
+    <div class="loc-grid">
+      <div class="loc-info reveal">
+        <span class="eyebrow">Visit us</span>
+        <h2 class="h2">Two Rhode Island locations.</h2>
+        <p style="margin-bottom:1.5rem">Book online in under a minute, call, or walk in. We can't wait to meet you.</p>
+        <div class="loc-row">
+          <div class="loc-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
+          <div><h4>East Providence</h4><p>2740 Pawtucket Ave · Inside Aura Salon Suites · East Providence, RI 02914</p></div>
+        </div>
+        <div class="loc-row">
+          <div class="loc-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Z"/><circle cx="12" cy="9" r="2.5"/></svg></div>
+          <div><h4>Johnston</h4><p>Serving Johnston &amp; North Providence, RI</p></div>
+        </div>
+        <div class="loc-row">
+          <div class="loc-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+          <div><h4>Hours</h4><p>Wed 12:30–6 · Thu 9–3:30 · Sat &amp; Sun 9–6 · By appointment &amp; walk-in</p></div>
+        </div>
+        <div class="loc-row">
+          <div class="loc-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.4-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/></svg></div>
+          <div><h4>Call or text</h4><p><a href="tel:+14017995572">(401) 799-5572</a></p></div>
+        </div>
+        <div class="hero-cta" style="margin-top:1.75rem">
+          <a class="btn -lg" href="/contact">Book &amp; directions</a>
+          <a class="btn -ghost -lg" href="tel:+14017995572">Call now</a>
+        </div>
+      </div>
+      <div class="map-ph reveal" role="img" aria-label="Map placeholder for clinic location">
+        <svg class="mp-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Z"/><circle cx="12" cy="9" r="2.5"/></svg>
+        <span class="mp-tag">Embed your Google Map here</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FINAL CTA -->
+<section class="cta-band">
+  <div class="wrap">
+    <h2 class="h2">Ready to feel like yourself again?</h2>
+    <p>Book a complimentary consultation with Giana and let's build a plan that's completely, naturally you.</p>
+    <div class="cta-actions">
+      <a class="btn -light -lg" href="/contact">Book your consultation</a>
+      <a class="btn -ghost -lg" href="tel:+14017995572" style="color:#fff;border-color:rgba(255,255,255,.4)">(401) 799-5572</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div class="foot-brand">
+        <span class="brand-name" style="font-size:1.3rem">Aesthetics Med &amp; Wellness by G</span>
+        <p>Provider-led medical aesthetics in Rhode Island. Natural results, personalized care, one trusted board-certified PA.</p>
+        <div class="foot-social">
+          <a href="#" aria-label="Instagram"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></a>
+          <a href="#" aria-label="Facebook"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M15 8h-2a2 2 0 0 0-2 2v10M8 12h6"/><path d="M18 2H6a4 4 0 0 0-4 4v12a4 4 0 0 0 4 4h12a4 4 0 0 0 4-4V6a4 4 0 0 0-4-4Z"/></svg></a>
+          <a href="#" aria-label="TikTok"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M15 4c.5 2.5 2 4 4.5 4.3V11c-1.8 0-3.4-.5-4.5-1.3V15a5.5 5.5 0 1 1-5.5-5.5c.3 0 .7 0 1 .1v2.7a2.8 2.8 0 1 0 2 2.7V4h2.5Z"/></svg></a>
+        </div>
+      </div>
+      <div>
+        <h4>Explore</h4>
+        <a href="#">Home</a>
+        <a href="/about">About G</a>
+        <a href="/services">Services</a>
+        <a href="/payment-plans">Payment Plans</a>
+        <a href="/contact">Contact</a>
+      </div>
+      <div>
+        <h4>Treatments</h4>
+        <a href="/services">Botox &amp; Neurotoxins</a>
+        <a href="/services">Dermal Fillers</a>
+        <a href="/services">Lip Enhancement</a>
+        <a href="/services">Skin Rejuvenation</a>
+        <a href="/services">Wellness</a>
+      </div>
+      <div>
+        <h4>Visit</h4>
+        <a href="tel:+14017995572">(401) 799-5572</a>
+        <a href="/contact">East Providence &amp; Johnston, RI</a>
+        <span style="display:block;padding:.3rem 0;color:#B39A91">Wed 12:30–6 · Thu 9–3:30</span>
+        <span style="display:block;color:#B39A91">Sat &amp; Sun 9–6 · Walk-ins welcome</span>
+        <a class="btn -lg" href="/contact" style="margin-top:1rem">Book now</a>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>© 2026 Aesthetics Med &amp; Wellness by G. All rights reserved.</span>
+      <span>Individual results vary. Consultation required. · <a href="#">Privacy</a> · <a href="#">Accessibility</a></span>
+    </div>
+  </div>
+</footer>
+</div>
+<script>
+(function(){
+  "use strict";
+  /* Header scroll state */
+  var header=document.getElementById('siteHeader');
+  var onScroll=function(){ header.classList.toggle('-scrolled', window.scrollY>8); };
+  onScroll(); window.addEventListener('scroll', onScroll, {passive:true});
+
+  /* Mobile menu */
+  var toggle=document.getElementById('navToggle'),
+      menu=document.getElementById('mobileMenu'),
+      scrim=document.getElementById('scrim'),
+      close=document.getElementById('mmClose');
+  function openMenu(){menu.classList.add('-open');scrim.classList.add('-on');menu.setAttribute('aria-hidden','false');toggle.setAttribute('aria-expanded','true');}
+  function closeMenu(){menu.classList.remove('-open');scrim.classList.remove('-on');menu.setAttribute('aria-hidden','true');toggle.setAttribute('aria-expanded','false');}
+  toggle.addEventListener('click',openMenu);
+  close.addEventListener('click',closeMenu);
+  scrim.addEventListener('click',closeMenu);
+  menu.querySelectorAll('a').forEach(function(a){a.addEventListener('click',closeMenu);});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeMenu();});
+
+  /* Before / After slider */
+  var stage=document.getElementById('baStage');
+  if(stage){
+    var after=document.getElementById('baAfter'),
+        divider=document.getElementById('baDivider'),
+        handle=document.getElementById('baHandle'),
+        range=document.getElementById('baRange');
+    function setPos(v){
+      v=Math.max(0,Math.min(100,v));
+      after.style.clipPath='inset(0 0 0 '+v+'%)';
+      divider.style.left=v+'%'; handle.style.left=v+'%';
+    }
+    range.addEventListener('input',function(){setPos(+range.value);});
+    setPos(50);
+  }
+
+  /* Reveal on scroll */
+  var reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var els=document.querySelectorAll('.reveal');
+  if(reduce || !('IntersectionObserver' in window)){
+    els.forEach(function(el){el.classList.add('-in');});
+  } else {
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('-in'); io.unobserve(en.target);} });
+    },{threshold:.12, rootMargin:'0px 0px -8% 0px'});
+    els.forEach(function(el){io.observe(el);});
+  }
+})();
+</script>
