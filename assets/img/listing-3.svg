@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Luxury villa with pool">
+  <defs>
+    <linearGradient id="s3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a9cfe6"/><stop offset="1" stop-color="#e9eef0"/></linearGradient>
+    <linearGradient id="g3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8bab66"/><stop offset="1" stop-color="#6b8b4e"/></linearGradient>
+    <linearGradient id="f3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f6f1ea"/><stop offset="1" stop-color="#e0d6c8"/></linearGradient>
+    <linearGradient id="p3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fb6cf"/><stop offset="1" stop-color="#3f8ba6"/></linearGradient>
+    <linearGradient id="w3" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d7ecf3"/><stop offset="1" stop-color="#9fc0cf"/></linearGradient>
+  </defs>
+  <rect width="600" height="250" fill="url(#s3)"/>
+  <circle cx="70" cy="60" r="40" fill="#fce9c6" opacity="0.7"/>
+  <rect y="250" width="600" height="150" fill="url(#g3)"/>
+  <!-- villa: long single-story with a raised block -->
+  <rect x="120" y="150" width="360" height="110" fill="url(#f3)"/>
+  <rect x="330" y="112" width="150" height="148" fill="#e3d8c8"/>
+  <rect x="112" y="142" width="376" height="12" fill="#3c342b"/>
+  <rect x="322" y="104" width="166" height="12" fill="#2f2820"/>
+  <!-- palm accents -->
+  <g stroke="#5a3f2a" stroke-width="6"><line x1="150" y1="150" x2="146" y2="96"/></g>
+  <g fill="#4e6b3c"><path d="M146 96 q-40 -6 -58 12 q34 -6 58 4 q-30 -22 -58 -30 q40 6 58 26 q6 -34 30 -50 q-14 34 -18 54 q30 -20 60 -22 q-40 14 -62 34 Z"/></g>
+  <!-- glass wall -->
+  <rect x="150" y="180" width="150" height="80" fill="url(#w3)"/>
+  <g stroke="#7d99a5" stroke-width="3"><line x1="200" y1="180" x2="200" y2="260"/><line x1="250" y1="180" x2="250" y2="260"/></g>
+  <!-- upper windows -->
+  <rect x="352" y="142" width="46" height="60" fill="url(#w3)"/>
+  <rect x="414" y="142" width="46" height="60" fill="url(#w3)"/>
+  <!-- entry -->
+  <rect x="308" y="206" width="30" height="54" fill="#6a4f39"/>
+  <!-- pool + deck -->
+  <rect x="60" y="300" width="480" height="70" rx="6" fill="#d8ccb6"/>
+  <rect x="90" y="312" width="300" height="46" rx="6" fill="url(#p3)"/>
+  <rect x="110" y="322" width="200" height="6" fill="#eaf6fb" opacity="0.6"/>
+  <circle cx="470" cy="330" r="20" fill="#4c6a39"/>
+</svg>

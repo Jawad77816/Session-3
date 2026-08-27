@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Modern single-family home">
+  <defs>
+    <linearGradient id="s1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bcd6ea"/><stop offset="1" stop-color="#e8f0f4"/></linearGradient>
+    <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8fae6b"/><stop offset="1" stop-color="#6f9152"/></linearGradient>
+    <linearGradient id="f1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4efe8"/><stop offset="1" stop-color="#ded4c6"/></linearGradient>
+    <linearGradient id="w1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfe4ee"/><stop offset="1" stop-color="#93b7c9"/></linearGradient>
+  </defs>
+  <rect width="600" height="270" fill="url(#s1)"/>
+  <circle cx="500" cy="70" r="42" fill="#fbe7c2" opacity="0.8"/>
+  <path d="M0 250 q150 -26 300 -6 q150 20 300 -4 L600 300 L0 300 Z" fill="#c9d9b6" opacity="0.6"/>
+  <rect y="270" width="600" height="130" fill="url(#g1)"/>
+  <!-- house -->
+  <rect x="150" y="150" width="150" height="150" fill="url(#f1)"/>
+  <rect x="300" y="120" width="180" height="180" fill="#cdbfa9"/>
+  <rect x="140" y="142" width="170" height="12" fill="#3f3830"/>
+  <rect x="292" y="112" width="196" height="12" fill="#332c25"/>
+  <!-- garage / lower windows -->
+  <rect x="172" y="186" width="46" height="80" fill="url(#w1)"/>
+  <rect x="230" y="186" width="46" height="80" fill="url(#w1)"/>
+  <!-- big glass -->
+  <rect x="330" y="150" width="120" height="120" fill="url(#w1)"/>
+  <g stroke="#7d94a1" stroke-width="3"><line x1="370" y1="150" x2="370" y2="270"/><line x1="410" y1="150" x2="410" y2="270"/><line x1="330" y1="210" x2="450" y2="210"/></g>
+  <!-- door -->
+  <rect x="286" y="228" width="30" height="72" fill="#6a4f39"/>
+  <!-- landscaping -->
+  <circle cx="120" cy="300" r="30" fill="#4e6b3c"/>
+  <circle cx="500" cy="302" r="26" fill="#4e6b3c"/>
+  <rect x="150" y="298" width="330" height="8" fill="#0000" />
+  <ellipse cx="315" cy="312" rx="180" ry="12" fill="#5c7a44" opacity="0.5"/>
+</svg>

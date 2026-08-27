@@ -336,7 +336,7 @@ body.nav-open .nav-toggle span:nth-child(3) { transform: translateY(-7px) rotate
 .hero__bg {
   position: absolute; inset: 0;
   background-size: cover; background-position: center;
-  opacity: 0.5;
+  opacity: 0.7;
   z-index: 0;
 }
 .hero__scrim {
@@ -567,8 +567,10 @@ body.nav-open .nav-toggle span:nth-child(3) { transform: translateY(-7px) rotate
   overflow: hidden;
 }
 .listing__media svg { width: 58px; height: 58px; opacity: .5; }
+.listing__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 0; }
+.listing:hover .listing__img { transform: scale(1.04); transition: transform 1.2s var(--ease); }
 .listing__badge {
-  position: absolute; top: 16px; left: 16px;
+  position: absolute; top: 16px; left: 16px; z-index: 2;
   background: var(--ink); color: #fff;
   font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
   padding: 7px 14px;
@@ -952,4 +954,121 @@ body.nav-open .nav-toggle span:nth-child(3) { transform: translateY(-7px) rotate
   .trust__grid { grid-template-columns: 1fr; }
   .trust__item { border-right: none; border-bottom: 1px solid var(--line-light); }
   .trust__item:last-child { border-bottom: none; }
+}
+
+/* ==========================================================================
+   LIGHT THEME  —  add data-theme="light" to <html> for a bright, airy version.
+   Overrides only the surfaces that were dark; light components stay as-is.
+   ========================================================================== */
+[data-theme="light"] {
+  --text-invert: #2b2621;
+  --text-invert-soft: #6b6259;
+  --line-light: rgba(20, 17, 15, 0.12);
+}
+
+/* Header — dark text over the bright hero, white panel when scrolled */
+[data-theme="light"] .brand__name { color: var(--ink); }
+[data-theme="light"] .brand__title { color: var(--gold-deep); }
+[data-theme="light"] .brand__mark { color: var(--gold-deep); border-color: var(--gold); }
+[data-theme="light"] .nav__link { color: rgba(43, 38, 33, 0.82); }
+[data-theme="light"] .nav__link:hover,
+[data-theme="light"] .nav__link[aria-current="page"] { color: var(--ink); }
+[data-theme="light"] .nav__cta { color: var(--ink); border-color: rgba(20, 17, 15, 0.3); }
+[data-theme="light"] .nav__cta:hover { color: #1b1611; border-color: var(--gold); background: var(--gold); }
+[data-theme="light"] .nav-toggle span { background: var(--ink); }
+[data-theme="light"] .site-header.scrolled,
+[data-theme="light"] .site-header.solid {
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom-color: var(--line);
+}
+
+/* Hero — bright image, light scrim, dark headline */
+[data-theme="light"] .hero { background: linear-gradient(120deg, #e9f2f6 0%, #dfeaef 100%); color: var(--ink); }
+[data-theme="light"] .hero__bg { opacity: 0.92; }
+[data-theme="light"] .hero__scrim {
+  background:
+    linear-gradient(90deg, rgba(250, 247, 242, 0.95) 0%, rgba(250, 247, 242, 0.78) 42%, rgba(250, 247, 242, 0.2) 72%, transparent 100%),
+    linear-gradient(0deg, rgba(250, 247, 242, 0.75), transparent 42%);
+}
+[data-theme="light"] .hero h1 { color: var(--ink); }
+[data-theme="light"] .hero h1 em { color: var(--gold-deep); }
+[data-theme="light"] .hero__sub { color: var(--graphite); }
+[data-theme="light"] .hero .eyebrow { color: var(--gold-deep); }
+[data-theme="light"] .hero__scroll { color: var(--text-soft); }
+
+/* Ghost-light buttons need dark ink on light backgrounds */
+[data-theme="light"] .btn--ghost-light { color: var(--ink); border-color: rgba(20, 17, 15, 0.35); }
+[data-theme="light"] .btn--ghost-light:hover { background: var(--ink); color: #fff; border-color: var(--ink); }
+
+/* Trust bar */
+[data-theme="light"] .trust { background: var(--sand); border-top-color: var(--line); }
+[data-theme="light"] .trust__item { border-right-color: var(--line); }
+[data-theme="light"] .trust__num { color: var(--gold-deep); }
+[data-theme="light"] .trust__label { color: var(--text-soft); }
+
+/* Dark sections → light */
+[data-theme="light"] .section--dark { background: var(--sand); color: var(--text); }
+[data-theme="light"] .section--dark h1, [data-theme="light"] .section--dark h2,
+[data-theme="light"] .section--dark h3, [data-theme="light"] .section--dark h4 { color: var(--ink); }
+[data-theme="light"] .section--dark .section-head p { color: var(--text-soft); }
+
+/* Testimonials */
+[data-theme="light"] .testi__quote { color: var(--ink); }
+[data-theme="light"] .testi__author { color: var(--gold-deep); }
+[data-theme="light"] .testi__loc { color: var(--text-soft); }
+[data-theme="light"] .testi-dots button { border-color: rgba(20, 17, 15, 0.3); }
+[data-theme="light"] .testi-dots button.active { background: var(--gold); border-color: var(--gold); }
+[data-theme="light"] .testi-arrows button { border-color: var(--line); color: var(--ink); }
+[data-theme="light"] .testi-arrows button:hover { background: var(--gold); color: #1b1611; border-color: var(--gold); }
+
+/* CTA band */
+[data-theme="light"] .cta-band { background: linear-gradient(120deg, #f4ead8 0%, #ece0cd 100%); color: var(--ink); }
+[data-theme="light"] .cta-band::after { background: radial-gradient(60% 120% at 50% 0%, rgba(176, 141, 87, 0.28), transparent 70%); }
+[data-theme="light"] .cta-band h2 { color: var(--ink); }
+[data-theme="light"] .cta-band p { color: var(--graphite); }
+
+/* Page hero (interior pages) */
+[data-theme="light"] .page-hero { background: linear-gradient(120deg, #eef4f7 0%, #e7ddce 100%); color: var(--ink); }
+[data-theme="light"] .page-hero__bg { opacity: 0.45; }
+[data-theme="light"] .page-hero h1 { color: var(--ink); }
+[data-theme="light"] .page-hero p { color: var(--graphite); }
+[data-theme="light"] .breadcrumb { color: var(--text-soft); }
+[data-theme="light"] .breadcrumb a:hover { color: var(--gold-deep); }
+[data-theme="light"] .breadcrumb span { color: var(--gold-deep); }
+[data-theme="light"] .service-anchors { border-top-color: var(--line); }
+[data-theme="light"] .service-anchors a { color: var(--graphite); border-color: rgba(20, 17, 15, 0.25); }
+[data-theme="light"] .service-anchors a:hover { background: var(--gold); color: #1b1611; border-color: var(--gold); }
+
+/* Mortgage calculator result panel */
+[data-theme="light"] .calc-result { background: var(--sand-2); border-top-color: var(--gold); }
+[data-theme="light"] .calc-result h3 { color: var(--ink); }
+[data-theme="light"] .result-amount { color: var(--gold-deep); }
+[data-theme="light"] .result-amount small { color: var(--text-soft); }
+[data-theme="light"] .result-rows { border-top-color: var(--line); }
+[data-theme="light"] .result-row span { color: var(--text-soft); }
+[data-theme="light"] .result-row strong { color: var(--ink); }
+[data-theme="light"] .result-note { color: var(--text-soft); }
+
+/* Footer */
+[data-theme="light"] .site-footer { background: var(--sand); color: var(--text-soft); }
+[data-theme="light"] .site-footer .brand__name { color: var(--ink); }
+[data-theme="light"] .footer-brand p { color: var(--text-soft); }
+[data-theme="light"] .footer-col h4 { color: var(--ink); }
+[data-theme="light"] .footer-col a,
+[data-theme="light"] .footer-contact a,
+[data-theme="light"] .footer-contact span { color: var(--text-soft); }
+[data-theme="light"] .footer-col a:hover,
+[data-theme="light"] .footer-contact a:hover { color: var(--gold-deep); }
+[data-theme="light"] .footer-top { border-bottom-color: var(--line); }
+[data-theme="light"] .footer-contact svg { color: var(--gold-deep); }
+[data-theme="light"] .footer-social a { border-color: var(--line); color: var(--text-soft); }
+[data-theme="light"] .footer-social a:hover { background: var(--gold); border-color: var(--gold); color: #1b1611; }
+[data-theme="light"] .footer-bottom { color: var(--text-soft); }
+[data-theme="light"] .footer-bottom .eho svg { color: var(--gold-deep); }
+[data-theme="light"] .footer-legal { color: var(--text-soft); }
+
+/* Mobile drawer in light theme */
+@media (max-width: 860px) {
+  [data-theme="light"] .nav { background: #fff; box-shadow: -30px 0 60px rgba(20, 17, 15, 0.18); }
+  [data-theme="light"] .nav__link { color: var(--ink); border-bottom-color: var(--line); }
 }

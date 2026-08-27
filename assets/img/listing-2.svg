@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 400" preserveAspectRatio="xMidYMid slice" role="img" aria-label="Traditional two-story family home">
+  <defs>
+    <linearGradient id="s2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfe0ec"/><stop offset="1" stop-color="#f0eee6"/></linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#94b06d"/><stop offset="1" stop-color="#728f52"/></linearGradient>
+    <linearGradient id="f2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e7d7c4"/><stop offset="1" stop-color="#cbb49b"/></linearGradient>
+    <linearGradient id="roof2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7c4a3a"/><stop offset="1" stop-color="#5e372b"/></linearGradient>
+    <linearGradient id="w2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fdeecb"/><stop offset="1" stop-color="#e6c98f"/></linearGradient>
+  </defs>
+  <rect width="600" height="270" fill="url(#s2)"/>
+  <circle cx="110" cy="66" r="38" fill="#fbe7c2" opacity="0.75"/>
+  <ellipse cx="420" cy="70" rx="70" ry="26" fill="#ffffff" opacity="0.7"/>
+  <ellipse cx="470" cy="80" rx="55" ry="22" fill="#ffffff" opacity="0.6"/>
+  <rect y="270" width="600" height="130" fill="url(#g2)"/>
+  <!-- house body -->
+  <rect x="190" y="168" width="220" height="132" fill="url(#f2)"/>
+  <!-- gable roof -->
+  <path d="M172 172 L300 96 L428 172 Z" fill="url(#roof2)"/>
+  <path d="M300 96 L428 172 L410 172 L300 108 Z" fill="#4d2c22"/>
+  <!-- chimney -->
+  <rect x="360" y="112" width="24" height="46" fill="#6a4436"/>
+  <!-- windows -->
+  <rect x="216" y="196" width="46" height="56" fill="url(#w2)"/>
+  <rect x="338" y="196" width="46" height="56" fill="url(#w2)"/>
+  <rect x="277" y="120" width="46" height="44" fill="url(#w2)"/>
+  <g stroke="#9a7d54" stroke-width="3">
+    <line x1="239" y1="196" x2="239" y2="252"/><line x1="216" y1="224" x2="262" y2="224"/>
+    <line x1="361" y1="196" x2="361" y2="252"/><line x1="338" y1="224" x2="384" y2="224"/>
+  </g>
+  <!-- door + portico -->
+  <rect x="282" y="234" width="36" height="66" fill="#5c3d29"/>
+  <rect x="272" y="228" width="56" height="8" fill="#4a3120"/>
+  <!-- shrubs -->
+  <circle cx="200" cy="300" r="24" fill="#4c6a39"/>
+  <circle cx="400" cy="300" r="24" fill="#4c6a39"/>
+  <ellipse cx="300" cy="312" rx="170" ry="12" fill="#5f7f46" opacity="0.5"/>
+</svg>
