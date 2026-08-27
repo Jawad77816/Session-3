@@ -43,14 +43,17 @@ python3 -m http.server 8000
 
 ## Images included
 
-The property/house pictures are **hand-built SVG illustrations** (self-contained,
-zero-dependency, crisp at any size) so the template looks complete out of the box:
+The template ships with **real house photographs** so it looks complete out of the box:
 
-- `assets/img/hero-home.svg` — dusk hero banner (dark version)
-- `assets/img/hero-home-day.svg` — daytime hero banner (light version)
-- `assets/img/listing-1.svg`, `listing-2.svg`, `listing-3.svg` — the featured-listing cards
+- `assets/img/hero-photo-dark.jpg` — twilight luxury home, hero banner (dark version)
+- `assets/img/hero-photo-day.jpg` — bright daytime luxury home, hero banner (light version)
+- `assets/img/listing-photo-1.jpg`, `listing-photo-2.jpg`, `listing-photo-3.jpg` — the featured-listing cards
 
-Swap any of them for real photography whenever you like — see below.
+> **Important — these are demo photos.** They come from a public real-estate image
+> dataset ([emanhamed/Houses-dataset](https://github.com/emanhamed/Houses-dataset))
+> and are included **for layout preview only**. Before the site goes live, replace
+> them with photos Vanessa owns or has licensed (or let the MLS/IDX feed supply real
+> listing photos). Swapping is trivial — see below.
 
 ## Placeholders to replace before going live
 
@@ -67,7 +70,7 @@ as-is and easy to finish.
    (In the `light/` pages the path is `../assets/img/vanessa.jpg`.)
 2. **Email address** — the document only listed a phone and office address, so
    `hello@vanessaoneill.com` is a stand-in. Find & replace it site-wide.
-3. **Property listings** — the featured cards use SVG illustrations and **sample**
+3. **Property listings** — the featured cards use demo photos and **sample**
    prices/addresses for layout. Connect an **MLS / IDX** feed (through her brokerage,
    iHomefinder, Showcase IDX, or RealScout) to show live listings, or replace the
    `<img class="listing__img">` sources and the price/beds text with real ones.
@@ -77,8 +80,9 @@ as-is and easy to finish.
    backend. In `contact.html`, set the `<form>`'s `action`/`method`, or keep the
    JavaScript handler in `assets/js/main.js` and post to your endpoint.
 6. **Social links** — the Instagram / Facebook / LinkedIn icons point to `#`.
-7. **Hero / property photos** — swap the SVG illustrations above for real photography
-   anytime (set a photo on `.hero__bg`, or replace the listing `<img>` sources).
+7. **Hero / property photos** — the demo photos are placeholders; swap them for
+   Vanessa's own or licensed images anytime (set a photo on `.hero__bg`, or replace
+   the listing `<img>` sources). See the note under **Images included**.
 8. **Map** — `contact.html` has a styled placeholder; drop in a Google Maps embed.
 9. **Brokerage** — no brokerage name was provided, so none is shown. Add the
    brokerage name/logo and any required license disclosures if desired.
