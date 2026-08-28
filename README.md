@@ -2,16 +2,28 @@
 
 A professional, responsive, multi-page website template for **Vanessa O'Neill**, a
 Southern California REALTOR® (CA DRE #01499193). Hand-built static HTML/CSS/JS — no
-build step, no dependencies. It blends the **luxury editorial** feel of Tim Smith
-Real Estate Group with the **conversion-focused structure** of the Gillette Group,
-using Vanessa's own bio, reviews, and services.
+build step, no dependencies. The structure blends the luxury-editorial feel of Tim
+Smith Real Estate with the conversion-focused flow of the Gillette Group, and it's
+styled entirely in **Vanessa's own branding kit**.
+
+## Brand
+
+Everything follows her branding kit:
+
+- **Colors** — **Amber** `#fc7f03` (accent) · **Steel** grays `#b2b2b2`–`#d8d8d8` ·
+  **Black** `#000`–`#262626` · white. Defined as CSS variables in `:root`
+  (`--gold` = amber) and swappable in one place.
+- **Fonts** — **Forum** (headings) + **Montserrat** (body), via Google Fonts with
+  system fallbacks.
+- **Headshot & identity** — her real headshot and REALTOR® / DRE #01499193 identity
+  are built in.
 
 ## Two versions — same content, two looks
 
 | Version | Where | Look |
 | --- | --- | --- |
-| **Dark / luxury** | root: `home.html`, `about.html`, `service.html`, `contact.html` | Charcoal + gold, cinematic dusk hero |
-| **Light / airy** | `light/` folder: `light/home.html`, etc. | Ivory + gold, bright daytime hero |
+| **Dark** | root: `home.html`, `about.html`, `service.html`, `contact.html` | Black + amber, cinematic twilight hero |
+| **Light** | `light/` folder: `light/home.html`, etc. | White + amber, bright daytime hero |
 
 The two versions share **one stylesheet, one script, and the same images** — the
 light pages simply add `data-theme="light"` to the `<html>` tag. Pick whichever you
@@ -28,7 +40,7 @@ prefer (or keep both); everything else is identical.
 | `index.html` | Redirects to `home.html` so the site also loads at the domain root |
 
 Shared assets live in `assets/` — `css/styles.css`, `js/main.js`, and `img/`
-(SVG house illustrations + a spot for Vanessa's photo).
+(house photos + Vanessa's headshot `vanessa.jpg`).
 
 ## How to view it
 
@@ -60,14 +72,10 @@ The template ships with **real house photographs** so it looks complete out of t
 Everything below is intentionally a placeholder so the template is safe to publish
 as-is and easy to finish.
 
-1. **Vanessa's headshot** *(needed)* — a monogram placeholder appears in the
-   "Meet Vanessa" area of `home.html` and `about.html` (both versions). Save her
-   photo as `assets/img/vanessa.jpg`, then swap the placeholder block for the
-   commented-out `<div class="portrait">…</div>` sitting right next to it:
-   ```html
-   <div class="portrait"><img src="assets/img/vanessa.jpg" alt="Vanessa O'Neill, REALTOR®"><span class="portrait__frame"></span></div>
-   ```
-   (In the `light/` pages the path is `../assets/img/vanessa.jpg`.)
+1. **Vanessa's headshot** — ✅ *done.* Her headshot (from the branding kit) is at
+   `assets/img/vanessa.jpg` and shown in the "Meet Vanessa" area of `home.html` and
+   `about.html` (both versions). To replace it, just overwrite that file with a new
+   photo of the same shape (a 4:5 portrait works best).
 2. **Email address** — the document only listed a phone and office address, so
    `hello@vanessaoneill.com` is a stand-in. Find & replace it site-wide.
 3. **Property listings** — the featured cards use demo photos and **sample**
@@ -91,8 +99,9 @@ as-is and easy to finish.
 
 All colors and fonts are CSS variables at the top of `assets/css/styles.css`
 (`:root`), and the light theme lives in the `[data-theme="light"]` block at the
-bottom of the same file. To rebrand, change `--gold` (accent), `--ink` (dark base),
-and `--cream` (light background). Fonts are Playfair Display + Jost (Google Fonts)
+bottom of the same file. The brand colors map to `--gold` (amber `#fc7f03`),
+`--ink` (black), `--sand`/`--sand-2` (steel), and `--cream` (white) — change them
+in one place to adjust the whole site. Fonts are Forum + Montserrat (Google Fonts)
 with system fallbacks.
 
 ## Notes
