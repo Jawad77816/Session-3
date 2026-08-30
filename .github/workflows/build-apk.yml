@@ -1,0 +1,56 @@
+name: Build APK
+
+# Builds the installable debug APK on GitHub's servers (which have the Android
+# SDK and can reach Google's build repositories), then publishes it two ways:
+#   1. As a workflow "artifact" (Actions tab -> latest run -> Artifacts).
+#   2. As an asset on the "latest-debug" Release (a stable direct download link).
+
+on:
+  push:
+    branches: [ "claude/android-app-scheduled-tasks-ftc8y4" ]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build debug APK
+        working-directory: PhoneAssistant
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace --no-daemon
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhoneAssistant-debug-apk
+          path: PhoneAssistant/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Publish APK to the latest-debug Release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-debug
+          name: Latest debug APK
+          body: |
+            Automatically built debug APK of Phone Assistant.
+            Download `app-debug.apk` below, then install it on your phone
+            (you'll need to allow "install from unknown sources").
+          files: PhoneAssistant/app/build/outputs/apk/debug/app-debug.apk

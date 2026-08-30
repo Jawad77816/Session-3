@@ -1,0 +1,63 @@
+<resources>
+    <string name="app_name">Phone Assistant</string>
+
+    <!-- Service labels/descriptions shown in system settings -->
+    <string name="accessibility_label">Phone Assistant — App Automation</string>
+    <string name="accessibility_description">Lets Phone Assistant press buttons and type in other apps (e.g. WhatsApp) so it can send your scheduled messages automatically. Only used when a task you created runs. No screen content is uploaded anywhere.</string>
+    <string name="notification_listener_label">Phone Assistant — Notification Reader</string>
+
+    <!-- Onboarding / permissions -->
+    <string name="setup_title">Set up Phone Assistant</string>
+    <string name="setup_intro">Grant these so the assistant can run your scheduled tasks. Everything stays on your phone.</string>
+    <string name="grant">Grant</string>
+    <string name="open_settings">Open settings</string>
+    <string name="done">Done</string>
+
+    <!-- Main -->
+    <string name="scheduled_tasks">Scheduled tasks</string>
+    <string name="no_tasks">No tasks yet.\nTap + or use the command box above.</string>
+    <string name="command_hint">Type a command, e.g. \"WhatsApp Ali: I\'ll be late at 5:30pm\"</string>
+    <string name="speak">Speak</string>
+    <string name="add_task">Add task</string>
+    <string name="settings">Settings</string>
+    <string name="setup">Setup &amp; permissions</string>
+
+    <!-- Add/Edit -->
+    <string name="channel">Channel</string>
+    <string name="target_hint">Contact name / number / email</string>
+    <string name="message_hint">Message / content</string>
+    <string name="subject_hint">Subject (email only)</string>
+    <string name="pick_date">Pick date</string>
+    <string name="pick_time">Pick time (PKT)</string>
+    <string name="save">Save</string>
+    <string name="run_now">Run now</string>
+
+    <!-- Settings -->
+    <string name="tz_note">Times are interpreted in Pakistan Standard Time (Asia/Karachi, UTC+5).</string>
+    <string name="ai_enabled">Use AI to understand natural-language commands (needs internet)</string>
+    <string name="api_key_hint">Claude API key (sk-ant-…)</string>
+    <string name="smtp_section">Email (SMTP) — for sending email</string>
+    <string name="smtp_host_hint">SMTP host (e.g. smtp.gmail.com)</string>
+    <string name="smtp_port_hint">SMTP port (e.g. 587)</string>
+    <string name="smtp_user_hint">Your email address</string>
+    <string name="smtp_pass_hint">App password (not your normal password)</string>
+    <string name="save_settings">Save settings</string>
+
+    <!-- Notifications -->
+    <string name="channel_status">Task status</string>
+    <string name="running_task">Running scheduled task…</string>
+
+    <!-- Onboarding permission cards -->
+    <string name="perm_accessibility_title">1. App Automation (Accessibility)</string>
+    <string name="perm_accessibility_desc">Required to auto-send WhatsApp / WhatsApp Business messages by tapping Send for you. Turn on “Phone Assistant — App Automation”.</string>
+    <string name="perm_notif_title">2. Notification access</string>
+    <string name="perm_notif_desc">Lets the assistant read notifications from all apps. Optional, but part of the cross-app awareness.</string>
+    <string name="perm_smscontacts_title">3. SMS &amp; Contacts</string>
+    <string name="perm_smscontacts_desc">Send SMS directly and look up a contact’s number by name.</string>
+    <string name="perm_postnotif_title">4. Show notifications</string>
+    <string name="perm_postnotif_desc">Allow status notifications so you see when a scheduled task ran.</string>
+    <string name="perm_exact_title">5. Exact alarms</string>
+    <string name="perm_exact_desc">Required so tasks fire at the exact minute you choose, even in Doze.</string>
+    <string name="perm_battery_title">6. Ignore battery optimisation</string>
+    <string name="perm_battery_desc">Keeps scheduled tasks reliable when the phone is idle.</string>
+</resources>

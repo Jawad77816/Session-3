@@ -1,0 +1,28 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Chat bubble -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M30,32 h48 a7,7 0 0 1 7,7 v26 a7,7 0 0 1 -7,7 H56 l-13,11 v-11 h-13 a7,7 0 0 1 -7,-7 V39 a7,7 0 0 1 7,-7 z" />
+    <!-- Clock face -->
+    <path
+        android:fillColor="#0B6BCB"
+        android:pathData="M54,42 m-11,0 a11,11 0 1 0 22,0 a11,11 0 1 0 -22,0" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,42 m-8,0 a8,8 0 1 0 16,0 a8,8 0 1 0 -16,0" />
+    <!-- Clock hands -->
+    <path
+        android:strokeColor="#0B6BCB"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,42 L54,37" />
+    <path
+        android:strokeColor="#0B6BCB"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M54,42 L58,44" />
+</vector>
