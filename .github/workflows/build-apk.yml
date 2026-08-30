@@ -43,6 +43,22 @@ jobs:
           path: PhoneAssistant/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
+      # Also commit the built APK onto a dedicated `apk-dist` branch so it can be
+      # fetched over plain git (pushing here does NOT re-trigger this workflow,
+      # which only runs on the feature branch + manual dispatch).
+      - name: Publish APK to apk-dist branch
+        if: success()
+        run: |
+          cp PhoneAssistant/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/app-debug.apk"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -B apk-dist
+          mkdir -p dist
+          cp "$RUNNER_TEMP/app-debug.apk" dist/app-debug.apk
+          git add -f dist/app-debug.apk
+          git commit -m "APK build for ${GITHUB_SHA}"
+          git push -f origin apk-dist
+
       - name: Publish APK to the latest-debug Release
         if: success()
         uses: softprops/action-gh-release@v2
