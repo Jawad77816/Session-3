@@ -33,6 +33,15 @@ Signals are evaluated on **closed bars** (no repaint), entries fill at market.
   (Swing / ATR), `InpSwingLookback`, `InpATRmult`, `InpATRperiod`, `InpSLBufferPts`.
 - **Money management:** `InpUseRiskPct` + `InpRiskPct` (risk-% sizing) **or**
   `InpFixedLots`.
+- **Progressive lot sizing (v1.10):** `InpUseProgLots` (default **true**) grows the
+  lot as the balance grows and **overrides** fixed/risk-% sizing while on.
+  `InpProgBaseLot` (0.05) is the lot at `InpProgBaseBalance` ($500); every
+  `InpProgStepBalance` ($1000) of balance gained adds `InpProgLotStep` (0.01).
+  So 0.05 at $500 → 0.06 at $1500 → 0.07 at $2500 → … (clamped to the broker's
+  min/max/step). Set `InpUseProgLots = false` to go back to fixed/risk-% sizing.
+- **Daily profit target (v1.10):** `InpDailyProfitTarget` (account currency).
+  Once the day's **realised** profit reaches it, no new trades open until the next
+  day (open trades still run to their SL/TP). **`0` = no daily limit.**
 - **Misc:** `InpMagic`, `InpMaxSpreadPts`, `InpSlippagePts`, `InpComment`.
 
 ## Honesty / notes

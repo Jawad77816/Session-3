@@ -24,8 +24,8 @@
 //|  DEMO account first. Signals are evaluated on CLOSED bars.        |
 //+------------------------------------------------------------------+
 #property copyright "Four EMA Ribbon EA"
-#property version   "1.00"
-#property description "4-EMA (8/13/21/55) ribbon crossover trend EA. Fixed R:R take-profit, default 1:3 (adjustable). Trades on closed-bar signals."
+#property version   "1.10"
+#property description "4-EMA (8/13/21/55) ribbon crossover trend EA. Fixed R:R take-profit, default 1:3 (adjustable). Adds a daily profit target and balance-driven progressive lot sizing. Trades on closed-bar signals."
 
 #include <Trade/Trade.mqh>
 CTrade  trade;
@@ -70,6 +70,23 @@ input bool   InpUseRiskPct     = false;  // Size by % risk (else fixed lots)
 input double InpRiskPct        = 1.0;    // Risk per trade (% of balance)
 input double InpFixedLots      = 0.10;   // Fixed lot size
 
+//--- inputs : progressive lot sizing -----------------------------------------
+// Grows the lot as the balance grows. Example: base 0.05 at $500, then +0.01
+// for every +$1000 of balance -> 0.06 at $1500, 0.07 at $2500, ...
+// When enabled this OVERRIDES fixed lots and risk-% sizing.
+input group                "=== Progressive lot sizing ==="
+input bool   InpUseProgLots     = true;  // Grow lot with balance (overrides fixed/risk%)
+input double InpProgBaseBalance = 500;   // Base balance for the base lot
+input double InpProgBaseLot      = 0.05; // Base lot at/below the base balance
+input double InpProgStepBalance  = 1000; // Add a step for every this much balance gained
+input double InpProgLotStep      = 0.01; // Lot added per step
+
+//--- inputs : daily profit target --------------------------------------------
+// Once the day's realised profit reaches this amount (account currency), no
+// new trades are opened until the next day. 0 = no daily limit.
+input group                "=== Daily profit target ==="
+input double InpDailyProfitTarget = 0.0; // Daily profit target (0 = no limit)
+
 //--- inputs : misc ------------------------------------------------------------
 input group                "=== Misc ==="
 input long   InpMagic          = 990088; // Magic number
@@ -80,6 +97,8 @@ input string InpComment        = "FourEMA";
 //--- handles / state ----------------------------------------------------------
 int      hEma1, hEma2, hEma3, hEma4, hATR;
 datetime g_lastBar = 0;
+int      g_dayKey          = -1;    // current day (yyyymmdd) for the daily target
+double   g_dayStartBalance = 0.0;   // balance recorded at the start of the day
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -176,8 +195,19 @@ double NormalizeLots(double lots)
    if(lots > maxL) lots = maxL;
    return(lots);
   }
+// progressive lot: base lot + one step per full "step balance" gained
+double ProgressiveLots()
+  {
+   double gain  = AccountInfoDouble(ACCOUNT_BALANCE) - InpProgBaseBalance;
+   int    steps = 0;
+   if(InpProgStepBalance > 0.0 && gain > 0.0)
+      steps = (int)MathFloor(gain / InpProgStepBalance);
+   if(steps < 0) steps = 0;
+   return(NormalizeLots(InpProgBaseLot + steps * InpProgLotStep));
+  }
 double CalcLots(const double slDistPrice)
   {
+   if(InpUseProgLots) return(ProgressiveLots());     // balance-driven sizing (overrides the rest)
    if(!InpUseRiskPct) return(NormalizeLots(InpFixedLots));
    double tickVal  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
    double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
@@ -214,6 +244,16 @@ void OnTick()
    if(!IsNewBar())
       return;
 
+   // --- daily profit target: record the balance at the start of each new day ---
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   int today = dt.year*10000 + dt.mon*100 + dt.day;
+   if(today != g_dayKey)
+     {
+      g_dayKey = today;
+      g_dayStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+     }
+
    // --- pull EMA values on the two most recent CLOSED bars (shift 1 & 2) ---
    double e1_1,e1_2, e2_1,e2_2, e3_1, e4_1;
    if(!EmaVal(hEma1,1,e1_1) || !EmaVal(hEma1,2,e1_2)) return;
@@ -242,6 +282,11 @@ void OnTick()
      }
 
    // --- entries ---
+   // daily profit target reached -> no new trades until the next day (0 = off)
+   if(InpDailyProfitTarget > 0.0 &&
+      (AccountInfoDouble(ACCOUNT_BALANCE) - g_dayStartBalance) >= InpDailyProfitTarget)
+      return;
+
    if(InpOneTradeAtATime && CountMyPositions(0) > 0)
       return;
 
