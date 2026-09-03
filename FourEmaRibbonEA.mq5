@@ -24,8 +24,8 @@
 //|  DEMO account first. Signals are evaluated on CLOSED bars.        |
 //+------------------------------------------------------------------+
 #property copyright "Four EMA Ribbon EA"
-#property version   "1.20"
-#property description "4-EMA (8/13/21/55) ribbon crossover trend EA. Fixed R:R TP (default 1:3). Progressive lot sizing, daily profit target + loss limit, optional ADX trend-strength filter, and an equity drawdown kill-switch. Closed-bar signals."
+#property version   "1.30"
+#property description "4-EMA (8/13/21/55) ribbon crossover trend EA. Fixed R:R TP (default 1:3). Progressive lots, daily profit target + loss limit, optional ADX filter, equity kill-switch, and optional exit management (breakeven / trailing / partial TP). Closed-bar signals."
 
 #include <Trade/Trade.mqh>
 CTrade  trade;
@@ -105,6 +105,21 @@ input group                "=== Equity kill-switch (optional) ==="
 input double InpEquityDDStop  = 0.0;   // Max equity drawdown from peak (%, 0 = off)
 input bool   InpFlattenOnStop = true;  // Close open trades when a limit/kill trips
 
+//--- inputs : exit management (optional) -------------------------------------
+// All measured in "R" = the trade's own initial risk (derived from its TP:
+// R = |TP - entry| / InpRR). All default OFF, so the base strategy is unchanged.
+input group                "=== Exit management (optional) ==="
+input bool   InpUseBreakeven    = false; // Move SL to breakeven after +N R
+input double InpBreakevenR       = 1.0;  // Profit in R to trigger breakeven
+input int    InpBreakevenLockPts = 0;    // Lock this many points beyond entry at BE
+input bool   InpUseTrail         = false;// Trailing stop (in R units)
+input double InpTrailStartR       = 1.0; // Start trailing after +this many R
+input double InpTrailDistR         = 1.0;// Trail distance behind price (in R)
+input int    InpTrailStepPts       = 10; // Min SL improvement to modify (points)
+input bool   InpUsePartial         = false; // Take partial profit
+input double InpPartialAtR           = 1.0; // Close part at +this many R
+input int    InpPartialPct            = 50;  // % of the position to close
+
 //--- inputs : misc ------------------------------------------------------------
 input group                "=== Misc ==="
 input long   InpMagic          = 990088; // Magic number
@@ -119,6 +134,7 @@ int      g_dayKey          = -1;    // current day (yyyymmdd) for the daily targ
 double   g_dayStartBalance = 0.0;   // balance recorded at the start of the day
 double   g_peakEquity      = 0.0;   // running peak equity (for the kill-switch)
 bool     g_killed          = false; // equity kill-switch tripped -> stop trading
+ulong    g_partialDone[];           // tickets already partially closed
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -258,6 +274,104 @@ double SwingHigh(const int lookback)
   }
 
 //+------------------------------------------------------------------+
+//| Exit management: breakeven, trailing stop, partial take-profit   |
+//+------------------------------------------------------------------+
+bool PartialDone(const ulong tk)
+  {
+   for(int i = 0; i < ArraySize(g_partialDone); i++)
+      if(g_partialDone[i] == tk) return(true);
+   return(false);
+  }
+void MarkPartial(const ulong tk)
+  {
+   int n = ArraySize(g_partialDone);
+   ArrayResize(g_partialDone, n+1);
+   g_partialDone[n] = tk;
+  }
+void PrunePartial()                   // drop tickets that are no longer open
+  {
+   ulong keep[]; int k = 0;
+   for(int i = 0; i < ArraySize(g_partialDone); i++)
+      if(PositionSelectByTicket(g_partialDone[i]))
+        { ArrayResize(keep, k+1); keep[k] = g_partialDone[i]; k++; }
+   ArrayResize(g_partialDone, k);
+   for(int i = 0; i < k; i++) g_partialDone[i] = keep[i];
+  }
+double NormalizePartialVol(double v)
+  {
+   double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+   if(step <= 0) step = 0.01;
+   v = MathFloor(v/step) * step;
+   return(v);
+  }
+void ManageOpenTrades()
+  {
+   if(!InpUseBreakeven && !InpUseTrail && !InpUsePartial) return;
+   PrunePartial();
+
+   double point     = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+   double stopLevel = (double)SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL) * point;
+   double minVol    = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+
+   for(int i = PositionsTotal()-1; i >= 0; i--)
+     {
+      ulong tk = PositionGetTicket(i);
+      if(tk == 0) continue;
+      if(PositionGetString(POSITION_SYMBOL) != _Symbol)        continue;
+      if((long)PositionGetInteger(POSITION_MAGIC) != InpMagic) continue;
+
+      long   type  = PositionGetInteger(POSITION_TYPE);
+      double entry = PositionGetDouble(POSITION_PRICE_OPEN);
+      double sl    = PositionGetDouble(POSITION_SL);
+      double tp    = PositionGetDouble(POSITION_TP);
+      double vol   = PositionGetDouble(POSITION_VOLUME);
+      if(tp <= 0.0) continue;                       // need TP to derive R
+      double risk  = MathAbs(tp - entry) / InpRR;   // R in price terms
+      if(risk <= 0.0) continue;
+
+      bool   isLong = (type == POSITION_TYPE_BUY);
+      double cur    = isLong ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
+                             : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      double profit = isLong ? (cur - entry) : (entry - cur);
+
+      // --- partial take-profit (once per position) ---
+      if(InpUsePartial && !PartialDone(tk) && profit >= InpPartialAtR * risk)
+        {
+         double closeVol = NormalizePartialVol(vol * InpPartialPct / 100.0);
+         if(closeVol >= minVol && (vol - closeVol) >= minVol)
+           {
+            if(trade.PositionClosePartial(tk, closeVol))
+              {
+               MarkPartial(tk);
+               vol = PositionGetDouble(POSITION_VOLUME);   // refresh remaining volume
+              }
+           }
+         else
+            MarkPartial(tk);   // can't split (too small) -> don't retry every tick
+        }
+
+      // --- breakeven + trailing collapsed into one target SL, applied once ---
+      double target = sl;
+      if(InpUseBreakeven && profit >= InpBreakevenR * risk)
+        {
+         double be = isLong ? entry + InpBreakevenLockPts*point
+                            : entry - InpBreakevenLockPts*point;
+         target = isLong ? MathMax(target, be) : MathMin(target, be);
+        }
+      if(InpUseTrail && profit >= InpTrailStartR * risk)
+        {
+         double nsl = isLong ? cur - InpTrailDistR*risk : cur + InpTrailDistR*risk;
+         target = isLong ? MathMax(target, nsl) : MathMin(target, nsl);
+        }
+
+      bool improve = isLong ? (target > sl) : (target < sl);
+      bool okDist  = isLong ? (cur - target >= stopLevel) : (target - cur >= stopLevel);
+      if(improve && okDist && MathAbs(target - sl) >= InpTrailStepPts*point)
+         trade.PositionModify(tk, NormalizeDouble(target, _Digits), tp);
+     }
+  }
+
+//+------------------------------------------------------------------+
 //| Main                                                             |
 //+------------------------------------------------------------------+
 void OnTick()
@@ -279,6 +393,9 @@ void OnTick()
          return;
         }
      }
+
+   // --- manage open trades (breakeven / trailing / partial) every tick ---
+   ManageOpenTrades();
 
    if(!IsNewBar())
       return;

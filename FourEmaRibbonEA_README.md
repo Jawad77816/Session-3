@@ -50,6 +50,14 @@ Signals are evaluated on **closed bars** (no repaint), entries fill at market.
   default **0 = off**). If equity falls that far below its running peak, the EA
   closes everything and **stops trading until it is reloaded**. `InpFlattenOnStop`
   (default true) controls whether tripping a limit/kill also closes open trades.
+- **Exit management (v1.30, optional, all default OFF):** measured in **R** = the
+  trade's own initial risk (`R = |TP − entry| / InpRR`).
+  - `InpUseBreakeven` — move SL to breakeven after `InpBreakevenR` R of profit
+    (`InpBreakevenLockPts` locks a few points beyond entry).
+  - `InpUseTrail` — trailing stop that starts after `InpTrailStartR` R and trails
+    `InpTrailDistR` R behind price; `InpTrailStepPts` is the minimum SL move.
+  - `InpUsePartial` — close `InpPartialPct`% of the position at `InpPartialAtR` R
+    (once per trade), letting the rest run.
 - **Misc:** `InpMagic`, `InpMaxSpreadPts`, `InpSlippagePts`, `InpComment`.
 
 ## Honesty / notes
