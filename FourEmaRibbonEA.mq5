@@ -24,8 +24,8 @@
 //|  DEMO account first. Signals are evaluated on CLOSED bars.        |
 //+------------------------------------------------------------------+
 #property copyright "Four EMA Ribbon EA"
-#property version   "1.10"
-#property description "4-EMA (8/13/21/55) ribbon crossover trend EA. Fixed R:R take-profit, default 1:3 (adjustable). Adds a daily profit target and balance-driven progressive lot sizing. Trades on closed-bar signals."
+#property version   "1.20"
+#property description "4-EMA (8/13/21/55) ribbon crossover trend EA. Fixed R:R TP (default 1:3). Progressive lot sizing, daily profit target + loss limit, optional ADX trend-strength filter, and an equity drawdown kill-switch. Closed-bar signals."
 
 #include <Trade/Trade.mqh>
 CTrade  trade;
@@ -55,6 +55,14 @@ input bool   InpPriceFilter    = false;  // Also require close beyond the slow E
 input bool   InpCloseOnOpposite= true;   // Close a trade on an opposite signal
 input bool   InpOneTradeAtATime= true;   // Only one position (this symbol+magic)
 
+//--- inputs : ADX trend-strength filter (optional) ---------------------------
+// Only allow entries when ADX >= threshold (skips weak/choppy markets). ADX
+// measures trend STRENGTH (not direction), so it is not redundant with the EMAs.
+input group                "=== ADX filter (optional) ==="
+input bool   InpUseADX     = false;  // Require ADX >= threshold to enter
+input int    InpADXPeriod  = 14;     // ADX period
+input double InpADXMin      = 20.0;  // Minimum ADX to allow entries
+
 //--- inputs : risk / reward ---------------------------------------------------
 input group                "=== Risk / Reward ==="
 input double InpRR             = 3.0;    // Take-Profit R:R  (1 : x)   << default 1:3
@@ -81,11 +89,21 @@ input double InpProgBaseLot      = 0.05; // Base lot at/below the base balance
 input double InpProgStepBalance  = 1000; // Add a step for every this much balance gained
 input double InpProgLotStep      = 0.01; // Lot added per step
 
-//--- inputs : daily profit target --------------------------------------------
-// Once the day's realised profit reaches this amount (account currency), no
-// new trades are opened until the next day. 0 = no daily limit.
-input group                "=== Daily profit target ==="
+//--- inputs : daily profit target / loss limit -------------------------------
+// Both measured on the day's REALISED profit (account currency). 0 = disabled.
+//  * Profit target: once reached, no new trades until the next day.
+//  * Loss limit:   once the day's loss reaches it, stop for the day (and, if
+//    InpFlattenOnStop, close the open trade).
+input group                "=== Daily profit target / loss limit ==="
 input double InpDailyProfitTarget = 0.0; // Daily profit target (0 = no limit)
+input double InpDailyLossLimit    = 0.0; // Daily loss limit    (0 = no limit)
+
+//--- inputs : equity kill-switch (optional) ----------------------------------
+// Hard account protector. If equity falls this % below its running peak, close
+// everything and STOP trading until the EA is reloaded. 0 = disabled.
+input group                "=== Equity kill-switch (optional) ==="
+input double InpEquityDDStop  = 0.0;   // Max equity drawdown from peak (%, 0 = off)
+input bool   InpFlattenOnStop = true;  // Close open trades when a limit/kill trips
 
 //--- inputs : misc ------------------------------------------------------------
 input group                "=== Misc ==="
@@ -95,10 +113,12 @@ input int    InpSlippagePts    = 20;     // Max slippage (points)
 input string InpComment        = "FourEMA";
 
 //--- handles / state ----------------------------------------------------------
-int      hEma1, hEma2, hEma3, hEma4, hATR;
+int      hEma1, hEma2, hEma3, hEma4, hATR, hADX;
 datetime g_lastBar = 0;
 int      g_dayKey          = -1;    // current day (yyyymmdd) for the daily target
 double   g_dayStartBalance = 0.0;   // balance recorded at the start of the day
+double   g_peakEquity      = 0.0;   // running peak equity (for the kill-switch)
+bool     g_killed          = false; // equity kill-switch tripped -> stop trading
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -108,9 +128,10 @@ int OnInit()
    hEma3 = iMA(_Symbol, _Period, InpEma3, 0, InpMaMethod, InpMaPrice);
    hEma4 = iMA(_Symbol, _Period, InpEma4, 0, InpMaMethod, InpMaPrice);
    hATR  = iATR(_Symbol, _Period, InpATRperiod);
+   hADX  = iADX(_Symbol, _Period, InpADXPeriod);
 
    if(hEma1==INVALID_HANDLE || hEma2==INVALID_HANDLE || hEma3==INVALID_HANDLE ||
-      hEma4==INVALID_HANDLE || hATR==INVALID_HANDLE)
+      hEma4==INVALID_HANDLE || hATR==INVALID_HANDLE  || hADX==INVALID_HANDLE)
      {
       Print("Failed to create indicator handles");
       return(INIT_FAILED);
@@ -132,7 +153,7 @@ void OnDeinit(const int reason)
   {
    IndicatorRelease(hEma1); IndicatorRelease(hEma2);
    IndicatorRelease(hEma3); IndicatorRelease(hEma4);
-   IndicatorRelease(hATR);
+   IndicatorRelease(hATR);  IndicatorRelease(hADX);
   }
 
 //+------------------------------------------------------------------+
@@ -241,6 +262,24 @@ double SwingHigh(const int lookback)
 //+------------------------------------------------------------------+
 void OnTick()
   {
+   // --- equity kill-switch: runs every tick for fast protection ---
+   if(g_killed)
+      return;                                   // already stopped for good
+   double eq = AccountInfoDouble(ACCOUNT_EQUITY);
+   if(eq > g_peakEquity) g_peakEquity = eq;      // trail the equity peak
+   if(InpEquityDDStop > 0.0 && g_peakEquity > 0.0)
+     {
+      double ddpct = (g_peakEquity - eq) / g_peakEquity * 100.0;
+      if(ddpct >= InpEquityDDStop)
+        {
+         if(InpFlattenOnStop) CloseMyPositions(0);
+         g_killed = true;
+         PrintFormat("EQUITY KILL-SWITCH: drawdown %.2f%% >= %.2f%% -> closed all, trading stopped.",
+                     ddpct, InpEquityDDStop);
+         return;
+        }
+     }
+
    if(!IsNewBar())
       return;
 
@@ -252,6 +291,14 @@ void OnTick()
      {
       g_dayKey = today;
       g_dayStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
+     }
+
+   // --- daily loss limit: stop (and optionally flatten) for the rest of the day ---
+   if(InpDailyLossLimit > 0.0 &&
+      (AccountInfoDouble(ACCOUNT_BALANCE) - g_dayStartBalance) <= -InpDailyLossLimit)
+     {
+      if(InpFlattenOnStop && CountMyPositions(0) > 0) CloseMyPositions(0);
+      return;                                   // no more trading today
      }
 
    // --- pull EMA values on the two most recent CLOSED bars (shift 1 & 2) ---
@@ -295,6 +342,15 @@ void OnTick()
      {
       long spr = SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
       if(spr > InpMaxSpreadPts) return;
+     }
+
+   // ADX trend-strength filter (only gates NEW entries, not trade management)
+   if(InpUseADX && (longSig || shortSig))
+     {
+      double adx[];
+      ArraySetAsSeries(adx, true);
+      if(CopyBuffer(hADX, 0, 1, 1, adx) < 1) return;   // ADX main line, last closed bar
+      if(adx[0] < InpADXMin) return;                    // trend too weak -> skip
      }
 
    if(longSig)  OpenTrade(true);

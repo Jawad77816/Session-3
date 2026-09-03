@@ -39,9 +39,17 @@ Signals are evaluated on **closed bars** (no repaint), entries fill at market.
   `InpProgStepBalance` ($1000) of balance gained adds `InpProgLotStep` (0.01).
   So 0.05 at $500 → 0.06 at $1500 → 0.07 at $2500 → … (clamped to the broker's
   min/max/step). Set `InpUseProgLots = false` to go back to fixed/risk-% sizing.
-- **Daily profit target (v1.10):** `InpDailyProfitTarget` (account currency).
-  Once the day's **realised** profit reaches it, no new trades open until the next
-  day (open trades still run to their SL/TP). **`0` = no daily limit.**
+- **Daily profit target / loss limit (v1.10 / v1.20):** `InpDailyProfitTarget` and
+  `InpDailyLossLimit` (account currency, on the day's **realised** P/L). Profit
+  target reached → no new trades until next day. Loss limit reached → stop for the
+  day (and flatten if `InpFlattenOnStop`). **`0` = off** for each.
+- **ADX filter (v1.20, optional):** `InpUseADX` (default **off**) only allows entries
+  when `ADX >= InpADXMin` (default 20, period `InpADXPeriod`) — a trend-strength
+  gate that skips choppy markets. It only filters new entries, not trade management.
+- **Equity kill-switch (v1.20, optional):** `InpEquityDDStop` (% of peak equity,
+  default **0 = off**). If equity falls that far below its running peak, the EA
+  closes everything and **stops trading until it is reloaded**. `InpFlattenOnStop`
+  (default true) controls whether tripping a limit/kill also closes open trades.
 - **Misc:** `InpMagic`, `InpMaxSpreadPts`, `InpSlippagePts`, `InpComment`.
 
 ## Honesty / notes
