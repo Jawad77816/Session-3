@@ -24,8 +24,8 @@
 //|  DEMO account first. Signals are evaluated on CLOSED bars.        |
 //+------------------------------------------------------------------+
 #property copyright "Four EMA Ribbon EA"
-#property version   "1.30"
-#property description "4-EMA (8/13/21/55) ribbon crossover trend EA. Fixed R:R TP (default 1:3). Progressive lots, daily profit target + loss limit, optional ADX filter, equity kill-switch, and optional exit management (breakeven / trailing / partial TP). Closed-bar signals."
+#property version   "1.31"
+#property description "4-EMA (8/13/21/55) ribbon crossover trend EA. Default settings from $42k backtest (InpRR=1:2, daily target=$10, loss limit=$2000, max spread=300pts, swing lookback=50). Progressive lots, optional ADX filter, equity kill-switch, and optional exit management. Closed-bar signals."
 
 #include <Trade/Trade.mqh>
 CTrade  trade;
@@ -65,9 +65,9 @@ input double InpADXMin      = 20.0;  // Minimum ADX to allow entries
 
 //--- inputs : risk / reward ---------------------------------------------------
 input group                "=== Risk / Reward ==="
-input double InpRR             = 3.0;    // Take-Profit R:R  (1 : x)   << default 1:3
+input double InpRR             = 2.0;    // Take-Profit R:R  (1 : x)   << default 1:2 (from $42k backtest)
 input ENUM_SLMODE InpSLMode    = SL_SWING;// Stop-loss method
-input int    InpSwingLookback  = 10;     // Swing lookback (bars)  [SL_SWING]
+input int    InpSwingLookback  = 50;     // Swing lookback (bars)  [SL_SWING] (from $42k backtest)
 input double InpATRmult        = 1.5;    // ATR multiple           [SL_ATR]
 input int    InpATRperiod      = 14;     // ATR period             [SL_ATR]
 input int    InpSLBufferPts    = 10;     // Extra stop buffer (points)
@@ -76,7 +76,7 @@ input int    InpSLBufferPts    = 10;     // Extra stop buffer (points)
 input group                "=== Money management ==="
 input bool   InpUseRiskPct     = false;  // Size by % risk (else fixed lots)
 input double InpRiskPct        = 1.0;    // Risk per trade (% of balance)
-input double InpFixedLots      = 0.10;   // Fixed lot size
+input double InpFixedLots      = 0.05;   // Fixed lot size (from $42k backtest)
 
 //--- inputs : progressive lot sizing -----------------------------------------
 // Grows the lot as the balance grows. Example: base 0.05 at $500, then +0.01
@@ -95,8 +95,8 @@ input double InpProgLotStep      = 0.01; // Lot added per step
 //  * Loss limit:   once the day's loss reaches it, stop for the day (and, if
 //    InpFlattenOnStop, close the open trade).
 input group                "=== Daily profit target / loss limit ==="
-input double InpDailyProfitTarget = 0.0; // Daily profit target (0 = no limit)
-input double InpDailyLossLimit    = 0.0; // Daily loss limit    (0 = no limit)
+input double InpDailyProfitTarget = 10.0; // Daily profit target (0 = no limit) [from $42k backtest]
+input double InpDailyLossLimit    = 2000.0; // Daily loss limit (0 = no limit) [from $42k backtest]
 
 //--- inputs : equity kill-switch (optional) ----------------------------------
 // Hard account protector. If equity falls this % below its running peak, close
@@ -123,7 +123,7 @@ input int    InpPartialPct            = 50;  // % of the position to close
 //--- inputs : misc ------------------------------------------------------------
 input group                "=== Misc ==="
 input long   InpMagic          = 990088; // Magic number
-input int    InpMaxSpreadPts   = 50;     // Max spread to enter (points, 0=off)
+input int    InpMaxSpreadPts   = 300;    // Max spread to enter (points, 0=off) [CRITICAL for gold/XAUUSD]
 input int    InpSlippagePts    = 20;     // Max slippage (points)
 input string InpComment        = "FourEMA";
 
