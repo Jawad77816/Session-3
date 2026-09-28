@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#07070d; --panel:#11111d; --line:rgba(255,255,255,.09);
+    --ink:#f5f5fb; --mut:#a6a6c2; --dim:#6f6f8c;
+    --pur:#7c5cff; --pur2:#9b7bff; --ind:#5b6cff; --teal:#2ee6a6; --pink:#ff6ea9;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{background:#000}
+  #stage{
+    position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--bg);
+    font-family:'Inter','Helvetica Neue',Arial,sans-serif;color:var(--ink);
+    -webkit-font-smoothing:antialiased;letter-spacing:-.01em;
+  }
+  .scene{position:absolute;inset:0}
+  .layer{position:absolute;inset:0;will-change:opacity,transform}
+  .c{position:absolute;will-change:opacity,transform}
+  .grad{background:linear-gradient(96deg,var(--pur2) 0%,var(--teal) 96%);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .gradp{background:linear-gradient(96deg,#b79bff 0%,#ff8fc0 100%);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+  /* aura / background */
+  #aura{position:absolute;inset:-20%;filter:blur(90px);opacity:.85}
+  #aura .blob{position:absolute;border-radius:50%}
+  .vig{position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 42%,transparent 40%,rgba(0,0,0,.55) 100%);pointer-events:none}
+  .grain{position:absolute;inset:0;opacity:.05;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>")}
+
+  /* type */
+  .kick{font-weight:700;font-size:22px;letter-spacing:.34em;text-transform:uppercase;color:var(--pur2)}
+  .kick.t{color:var(--teal)}
+  h1{font-weight:800;font-size:96px;line-height:1.02;letter-spacing:-.03em}
+  h2{font-weight:800;font-size:74px;line-height:1.05;letter-spacing:-.03em}
+  .huge{font-weight:900;font-size:106px;line-height:1;letter-spacing:-.04em;white-space:nowrap}
+  .lead{font-weight:500;font-size:34px;line-height:1.35;color:var(--mut)}
+  .chip{display:inline-flex;align-items:center;gap:12px;padding:14px 26px;border-radius:999px;
+    background:rgba(124,92,255,.13);border:1px solid rgba(124,92,255,.4);font-weight:600;font-size:26px;color:#dcd6ff}
+  .chip.teal{background:rgba(46,230,166,.12);border-color:rgba(46,230,166,.42);color:#c7f6e7}
+  .dot{width:11px;height:11px;border-radius:50%;background:var(--teal);box-shadow:0 0 14px var(--teal)}
+
+  /* wordmark */
+  .mark{display:inline-flex;align-items:center;gap:22px}
+  .mark .hex{width:96px;height:96px;position:relative;display:grid;place-items:center}
+  .mark .hex svg{position:absolute;inset:0}
+  .mark .hex b{font-weight:900;font-size:44px;background:linear-gradient(135deg,#8b6bff,#2ee6a6);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .mark .wm{font-weight:800;font-size:64px;letter-spacing:-.03em}
+  .mark .wm .g{background:linear-gradient(96deg,#9b7bff,#2ee6a6);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+  /* floating chaos chips */
+  .fchip{padding:16px 24px;border-radius:16px;background:rgba(22,22,34,.82);border:1px solid var(--line);
+    font-weight:600;font-size:27px;color:#cfcfe4;box-shadow:0 22px 60px rgba(0,0,0,.5);white-space:nowrap;backdrop-filter:blur(3px)}
+  .fchip .ic{color:var(--pink);margin-right:12px}
+
+  /* product card */
+  .card{position:absolute;border-radius:22px;overflow:hidden;background:#0c0c16;
+    border:1px solid rgba(255,255,255,.12);box-shadow:0 50px 130px rgba(0,0,0,.7), 0 0 0 1px rgba(124,92,255,.10)}
+  .card .bar{height:46px;background:linear-gradient(180deg,#15151f,#101019);display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--line)}
+  .card .bar i{width:14px;height:14px;border-radius:50%;display:block}
+  .card .bar .u{margin-left:20px;font-size:19px;color:var(--dim);font-weight:500}
+  .card .shot{width:100%;height:calc(100% - 46px);object-fit:cover;object-position:50% 0%;display:block}
+  .card.ag .shot{transform:scale(1.1);transform-origin:top center}
+  .glowring{position:absolute;border-radius:30px;filter:blur(30px);opacity:.5;
+    background:conic-gradient(from 0deg,var(--pur),var(--teal),var(--ind),var(--pur))}
+
+  /* stat tiles */
+  .tile{width:470px;padding:52px 44px;border-radius:26px;background:linear-gradient(180deg,rgba(20,20,32,.9),rgba(12,12,20,.9));
+    border:1px solid var(--line);text-align:center;box-shadow:0 40px 90px rgba(0,0,0,.5)}
+  .tile .n{font-weight:900;font-size:118px;line-height:1;letter-spacing:-.04em}
+  .tile .l{margin-top:18px;font-weight:600;font-size:29px;color:var(--mut)}
+
+  /* CTA button */
+  .btn{display:inline-flex;align-items:center;gap:16px;padding:26px 46px;border-radius:16px;font-weight:800;font-size:34px;color:#0a0a12;
+    background:linear-gradient(96deg,#9b7bff,#2ee6a6);box-shadow:0 24px 60px rgba(124,92,255,.4)}
+  .url{font-weight:800;font-size:56px;letter-spacing:-.02em}
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- AURA BG -->
+  <div id="aura">
+    <div class="blob" id="b1" style="width:900px;height:900px;background:radial-gradient(circle,#5b3cff,transparent 60%)"></div>
+    <div class="blob" id="b2" style="width:820px;height:820px;background:radial-gradient(circle,#12b98a,transparent 60%)"></div>
+    <div class="blob" id="b3" style="width:700px;height:700px;background:radial-gradient(circle,#ff4f8b,transparent 62%)"></div>
+  </div>
+
+  <!-- ================= SCENE 1 · HOOK ================= -->
+  <div class="scene">
+    <div class="c" data-in="0.4" data-dur=".8" data-out="5.7" data-outdur=".5" data-anim="up"
+         style="left:160px;top:300px;width:1300px"><h1>Your team is <span class="gradp">drowning</span><br>in busywork.</h1></div>
+    <div class="c" data-in="1.5" data-dur=".8" data-out="5.7" data-outdur=".5" data-anim="up"
+         style="left:162px;top:560px;width:1200px"><div class="lead">Context scattered across 40 tabs. Your best hours, gone.</div></div>
+
+    <div class="c fchip" data-in="0.7" data-dur=".6" data-out="5.6" data-outdur=".4" data-anim="pop" data-float data-ph="0.2"  style="left:1360px;top:210px"><span class="ic">✦</span>47 open tabs</div>
+    <div class="c fchip" data-in="1.0" data-dur=".6" data-out="5.6" data-outdur=".4" data-anim="pop" data-float data-ph="1.1"  style="left:1470px;top:360px"><span class="ic">✉</span>Inbox: 128 unread</div>
+    <div class="c fchip" data-in="1.3" data-dur=".6" data-out="5.6" data-outdur=".4" data-anim="pop" data-float data-ph="2.3"  style="left:1330px;top:520px"><span class="ic">↻</span>Follow-ups pending</div>
+    <div class="c fchip" data-in="1.6" data-dur=".6" data-out="5.6" data-outdur=".4" data-anim="pop" data-float data-ph="3.0"  style="left:1500px;top:680px"><span class="ic">▦</span>12 spreadsheets</div>
+    <div class="c fchip" data-in="1.9" data-dur=".6" data-out="5.6" data-outdur=".4" data-anim="pop" data-float data-ph="0.8"  style="left:1300px;top:820px"><span class="ic">⏸</span>Handoffs stalled</div>
+  </div>
+
+  <!-- ================= SCENE 2 · AGITATE ================= -->
+  <div class="scene">
+    <div class="c" data-in="6.3" data-dur=".55" data-out="10.3" data-outdur=".45" data-anim="up" style="left:160px;top:300px"><h2>Repetitive tasks.</h2></div>
+    <div class="c" data-in="7.2" data-dur=".55" data-out="10.3" data-outdur=".45" data-anim="up" style="left:160px;top:420px"><h2>Stalled handoffs.</h2></div>
+    <div class="c" data-in="8.1" data-dur=".55" data-out="10.3" data-outdur=".45" data-anim="up" style="left:160px;top:540px"><h2>Hiring just to keep up.</h2></div>
+    <div class="c" data-in="9.1" data-dur=".6" data-out="10.4" data-outdur=".4" data-anim="left" style="left:160px;top:700px"><div class="kick">Sound familiar?</div></div>
+  </div>
+
+  <!-- ================= SCENE 3 · REVEAL ================= -->
+  <div class="scene">
+    <div class="c" data-in="11.3" data-dur=".8" data-out="16.5" data-outdur=".5" data-anim="pop" style="left:50%;top:250px;transform-origin:center" data-cx>
+      <div class="mark">
+        <div class="hex">
+          <svg viewBox="0 0 100 100"><polygon points="50,4 91,27 91,73 50,96 9,73 9,27" fill="none" stroke="url(#g)" stroke-width="4"/><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b6bff"/><stop offset="1" stop-color="#2ee6a6"/></linearGradient></defs></svg>
+          <b>C</b>
+        </div>
+        <div class="wm">Go<span class="g">Centriflow</span></div>
+      </div>
+    </div>
+    <div class="c" data-in="12.3" data-dur=".9" data-out="16.5" data-outdur=".5" data-anim="up" style="left:50%;top:440px;width:1500px;text-align:center" data-cx>
+      <h1>Give every department a team of<br><span class="grad">AI agents</span> that never clock out.</h1>
+    </div>
+    <div class="c" data-in="13.7" data-dur=".8" data-out="16.5" data-outdur=".5" data-anim="up" style="left:50%;top:760px;text-align:center" data-cx>
+      <div class="lead" style="font-size:40px;color:#d9d9ee">Centralize the Chaos. <b style="color:#fff">Automate the Flow.</b></div>
+    </div>
+  </div>
+
+  <!-- ================= SCENE 4 · DASHBOARD ================= -->
+  <div class="scene">
+    <div class="c" data-in="17.3" data-dur=".6" data-out="23.6" data-outdur=".5" data-anim="down" style="left:160px;top:120px"><div class="kick t">One control plane</div></div>
+    <div class="c" data-in="17.6" data-dur=".7" data-out="23.6" data-outdur=".5" data-anim="up" style="left:160px;top:158px;width:1300px"><h2>Your entire operation,<br>finally in one place.</h2></div>
+
+    <div class="c card" data-in="18.1" data-dur=".9" data-out="23.6" data-outdur=".5" data-anim="scale" data-kb
+         style="left:160px;top:400px;width:1600px;height:620px">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="u">app.gocentriflow.ai/dashboard</span></div>
+      <img class="shot" src="assets/dashboard.webp"/>
+    </div>
+    <div class="c chip" data-in="20.0" data-dur=".6" data-out="23.6" data-outdur=".4" data-anim="pop" style="left:1180px;top:250px"><span class="dot"></span>Completely customized agents</div>
+  </div>
+
+  <!-- ================= SCENE 5 · AGENT SHOWCASE ================= -->
+  <div class="scene">
+    <div class="c" data-in="24.2" data-dur=".6" data-out="43.6" data-outdur=".5" data-anim="down" style="left:160px;top:96px"><div class="kick">Your AI workforce</div></div>
+
+    <!-- AGENT 1 · HR  (24.0-28.0) -->
+    <div class="c" data-in="24.4" data-dur=".7" data-out="27.7" data-outdur=".4" data-anim="right" style="left:160px;top:400px;width:600px">
+      <div class="chip teal" style="margin-bottom:26px">HR Agent</div>
+      <h2 style="font-size:60px">Offer letters, warnings &amp; approvals — drafted in seconds.</h2>
+      <div class="lead" style="margin-top:22px;font-size:30px">Written, routed for sign-off, and emailed automatically.</div>
+    </div>
+    <div class="c card ag" data-in="24.5" data-dur=".7" data-out="27.7" data-outdur=".45" data-anim="left" data-kb style="left:820px;top:250px;width:980px;height:560px">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="u">HR Agent · Generate &amp; Issue</span></div>
+      <img class="shot" src="assets/hr.webp"/>
+    </div>
+
+    <!-- AGENT 2 · INVOICE (28.0-32.0) -->
+    <div class="c" data-in="28.1" data-dur=".7" data-out="31.7" data-outdur=".4" data-anim="right" style="left:160px;top:400px;width:600px">
+      <div class="chip teal" style="margin-bottom:26px">Invoice Agent</div>
+      <h2 style="font-size:60px">Invoices sent, tracked &amp; reconciled — end to end.</h2>
+      <div class="lead" style="margin-top:22px;font-size:30px"><b style="color:#2ee6a6">Auto-chased</b> — clients pay faster, you follow up never.</div>
+    </div>
+    <div class="c card ag" data-in="28.2" data-dur=".7" data-out="31.7" data-outdur=".45" data-anim="left" data-kb style="left:820px;top:250px;width:980px;height:560px">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="u">Invoice Agent · Overview</span></div>
+      <img class="shot" src="assets/invoice.webp"/>
+    </div>
+
+    <!-- AGENT 3 · SALES (32.0-36.0) -->
+    <div class="c" data-in="32.1" data-dur=".7" data-out="35.7" data-outdur=".4" data-anim="right" style="left:160px;top:400px;width:600px">
+      <div class="chip teal" style="margin-bottom:26px">Sales Agent</div>
+      <h2 style="font-size:60px">Finds, qualifies &amp; enriches leads while you sleep.</h2>
+      <div class="lead" style="margin-top:22px;font-size:30px"><b style="color:#2ee6a6">71 prospects</b> sourced &amp; scored — synced to your CRM.</div>
+    </div>
+    <div class="c card ag" data-in="32.2" data-dur=".7" data-out="35.7" data-outdur=".45" data-anim="left" data-kb style="left:820px;top:250px;width:980px;height:560px">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="u">Sales Agent · Prospecting</span></div>
+      <img class="shot" src="assets/sales.webp"/>
+    </div>
+
+    <!-- AGENT 4 · SOCIAL (36.0-40.0) -->
+    <div class="c" data-in="36.1" data-dur=".7" data-out="39.7" data-outdur=".4" data-anim="right" style="left:160px;top:400px;width:600px">
+      <div class="chip teal" style="margin-bottom:26px">Social Media Agent</div>
+      <h2 style="font-size:60px">A month of on-brand content, planned &amp; published.</h2>
+      <div class="lead" style="margin-top:22px;font-size:30px"><b style="color:#2ee6a6">14 posts</b> scheduled across your platforms.</div>
+    </div>
+    <div class="c card ag" data-in="36.2" data-dur=".7" data-out="39.7" data-outdur=".45" data-anim="left" data-kb style="left:820px;top:250px;width:980px;height:560px">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="u">Social Media · Content Calendar</span></div>
+      <img class="shot" src="assets/social.jpg"/>
+    </div>
+
+    <!-- AGENT 5 · MEETING (40.0-43.6) -->
+    <div class="c" data-in="40.1" data-dur=".7" data-out="43.4" data-outdur=".4" data-anim="right" style="left:160px;top:400px;width:600px">
+      <div class="chip teal" style="margin-bottom:26px">Meeting Scheduler</div>
+      <h2 style="font-size:60px">Every meeting booked, reminded &amp; managed.</h2>
+      <div class="lead" style="margin-top:22px;font-size:30px">No double-bookings. Nothing slips through.</div>
+    </div>
+    <div class="c card ag" data-in="40.2" data-dur=".7" data-out="43.4" data-outdur=".45" data-anim="left" data-kb style="left:820px;top:250px;width:980px;height:560px">
+      <div class="bar"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span class="u">Meeting Scheduler · Calendar</span></div>
+      <img class="shot" src="assets/meeting.webp"/>
+    </div>
+  </div>
+
+  <!-- ================= SCENE 6 · PROOF ================= -->
+  <div class="scene">
+    <div class="c" data-in="44.2" data-dur=".7" data-out="49.7" data-outdur=".5" data-anim="up" style="left:50%;top:170px;text-align:center" data-cx><h2>The math is simple.</h2></div>
+    <div class="c tile" data-in="44.7" data-dur=".7" data-out="49.7" data-outdur=".5" data-anim="up" style="left:210px;top:400px">
+      <div class="n grad">24/7</div><div class="l">agents on the clock</div></div>
+    <div class="c tile" data-in="44.95" data-dur=".7" data-out="49.7" data-outdur=".5" data-anim="up" style="left:725px;top:400px">
+      <div class="n grad" data-to="40" data-cdur="1.3" data-suf="+">0</div><div class="l">hrs/week reclaimed per team</div></div>
+    <div class="c tile" data-in="45.2" data-dur=".7" data-out="49.7" data-outdur=".5" data-anim="up" style="left:1240px;top:400px">
+      <div class="n grad" data-to="100" data-cdur="1.4" data-suf="+">0</div><div class="l">tools &amp; apps connected</div></div>
+    <div class="c" data-in="47.6" data-dur=".7" data-out="49.7" data-outdur=".5" data-anim="up" style="left:50%;top:760px;text-align:center" data-cx>
+      <div class="lead" style="font-size:33px">You set the guardrails. Every action <b style="color:#fff">logged &amp; reversible.</b></div></div>
+  </div>
+
+  <!-- ================= SCENE 7 · CTA ================= -->
+  <div class="scene">
+    <div class="c" data-in="50.2" data-dur=".7" data-anim="up" style="left:50%;top:250px;text-align:center" data-cx><div class="huge">Centralize the Chaos.</div></div>
+    <div class="c" data-in="50.9" data-dur=".7" data-anim="up" style="left:50%;top:392px;text-align:center" data-cx><div class="huge grad">Automate the Flow.</div></div>
+    <div class="c" data-in="51.9" data-dur=".7" data-anim="pop" style="left:50%;top:580px" data-cx>
+      <div class="mark"><div class="hex"><svg viewBox="0 0 100 100"><polygon points="50,4 91,27 91,73 50,96 9,73 9,27" fill="none" stroke="url(#g2)" stroke-width="4"/><defs><linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8b6bff"/><stop offset="1" stop-color="#2ee6a6"/></linearGradient></defs></svg><b>C</b></div><div class="wm">Go<span class="g">Centriflow</span></div></div>
+    </div>
+    <div class="c" data-in="52.5" data-dur=".6" data-anim="up" style="left:50%;top:730px;text-align:center" data-cx><div class="url grad">gocentriflow.ai</div></div>
+    <div class="c" data-in="53.0" data-dur=".6" data-anim="pop" style="left:50%;top:838px" data-cx><div class="btn">Start free — no rip-and-replace →</div></div>
+  </div>
+
+  <div class="vig"></div>
+  <div class="grain"></div>
+</div>
+
+<script>
+  window.DURATION = 55.6;
+  window.FPS = 30;
+
+  var ease = function(p){ return 1-Math.pow(1-p,3); };           // easeOutCubic
+  var easeBack = function(p){ var c=1.9; return 1+(--p)*p*((c+1)*p+c); };
+  var clamp = function(v,a,b){ return v<a?a:v>b?b:v; };
+  var lerp = function(a,b,t){ return a+(b-a)*t; };
+
+  var ANIM = {
+    up:   {ex:0, ey:46,  es:1,   ox:0,  oy:-34, os:1,  eb:0},
+    down: {ex:0, ey:-46, es:1,   ox:0,  oy:34,  os:1,  eb:0},
+    left: {ex:70,ey:0,   es:1,   ox:-46,oy:0,   os:1,  eb:0},
+    right:{ex:-70,ey:0,  es:1,   ox:46, oy:0,   os:1,  eb:0},
+    scale:{ex:0, ey:26,  es:.92, ox:0,  oy:-16, os:1.03,eb:0},
+    pop:  {ex:0, ey:18,  es:.8,  ox:0,  oy:-10, os:.97,eb:1},
+    fade: {ex:0, ey:0,   es:1,   ox:0,  oy:0,   os:1,  eb:0}
+  };
+
+  var nodes = Array.prototype.slice.call(document.querySelectorAll('.c'));
+  nodes.forEach(function(el){
+    el.__in   = parseFloat(el.getAttribute('data-in'));
+    el.__dur  = parseFloat(el.getAttribute('data-dur')||'0.7');
+    el.__out  = el.hasAttribute('data-out') ? parseFloat(el.getAttribute('data-out')) : null;
+    el.__odur = parseFloat(el.getAttribute('data-outdur')||'0.5');
+    el.__anim = ANIM[el.getAttribute('data-anim')||'up'] || ANIM.up;
+    el.__cx   = el.hasAttribute('data-cx');
+    el.__float= el.hasAttribute('data-float');
+    el.__ph   = parseFloat(el.getAttribute('data-ph')||'0');
+    el.__kb   = el.hasAttribute('data-kb');
+    el.__cnt  = el.querySelector('[data-to]') || (el.hasAttribute('data-to')?el:null);
+  });
+
+  function fmt(n){ return Math.round(n).toString(); }
+
+  window.seekTo = function(ms){
+    var t = ms/1000;
+
+    // aura drift
+    var b1=document.getElementById('b1'), b2=document.getElementById('b2'), b3=document.getElementById('b3');
+    b1.style.transform='translate('+(300+Math.sin(t*0.25)*180)+'px,'+(120+Math.cos(t*0.2)*140)+'px)';
+    b2.style.transform='translate('+(1250+Math.cos(t*0.22)*160)+'px,'+(560+Math.sin(t*0.28)*150)+'px)';
+    b3.style.transform='translate('+(820+Math.sin(t*0.18+2)*220)+'px,'+(300+Math.cos(t*0.24+1)*160)+'px)';
+    // scene-tinted aura intensity
+    document.getElementById('aura').style.opacity = (t<11? .55 : (t>=50? 1 : .8));
+
+    nodes.forEach(function(el){
+      var a=el.__anim;
+      var ip = clamp((t-el.__in)/el.__dur,0,1);
+      var ipe = a.eb? easeBack(ip) : ease(ip);
+      var op = (el.__out!=null)? clamp((t-el.__out)/el.__odur,0,1) : 0;
+      var ope = ease(op);
+
+      var vis = (t>=el.__in) && (el.__out==null || t < el.__out+el.__odur+0.001);
+      if(!vis){ el.style.opacity='0'; return; }
+
+      var opacity = ip*(1-op);
+      var tx = a.ex*(1-ipe) + a.ox*ope;
+      var ty = a.ey*(1-ipe) + a.oy*ope;
+      var sc = 1 + (a.es-1)*(1-ipe) + (a.os-1)*ope;
+
+      if(el.__float){
+        tx += Math.sin(t*1.05+el.__ph)*7;
+        ty += Math.cos(t*0.85+el.__ph)*6;
+      }
+      if(el.__kb){
+        var life = clamp((t-el.__in)/3.4,0,1);
+        sc *= (1 + 0.05*life);
+        ty += -8*life;
+      }
+      var pre = el.__cx ? 'translateX(-50%) ' : '';
+      el.style.opacity = opacity.toFixed(3);
+      el.style.transform = pre+'translate('+tx.toFixed(2)+'px,'+ty.toFixed(2)+'px) scale('+sc.toFixed(3)+')';
+
+      if(el.__cnt){
+        var to=parseFloat(el.__cnt.getAttribute('data-to'));
+        var cd=parseFloat(el.__cnt.getAttribute('data-cdur')||'1.2');
+        var suf=el.__cnt.getAttribute('data-suf')||'';
+        var cp=ease(clamp((t-el.__in)/cd,0,1));
+        el.__cnt.textContent = fmt(lerp(0,to,cp))+suf;
+      }
+    });
+  };
+
+  window.__ready = false;
+  (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(function(){
+    window.seekTo(0); window.__ready = true;
+  });
+  // fallback ready
+  setTimeout(function(){ window.__ready = true; }, 1500);
+</script>
+</body>
+</html>
