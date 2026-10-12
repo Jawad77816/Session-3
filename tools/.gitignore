@@ -1,0 +1,4 @@
+# regenerable market data & backtest artifacts (fetch with fetch_data.py)
+gold_*.csv
+winrate_grid.json
+*.png

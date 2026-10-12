@@ -133,7 +133,26 @@ The detection algorithm was ported to Python and checked against synthetic data:
 fires exactly **one** buy on an ideal A-B-C-D false-breakout (correct A/B/C/D pivots,
 entry, 2-pip stop and 1:10 target), fires the **sell** mirror, and produces **zero**
 signals on flat noise, on a genuine breakdown with no reclaim, and when there is no
-sweep below support. See `docs/` and the strategy write-up for details.
+sweep below support. See `tools/validate_logic.py`.
+
+## Backtest & win rate
+
+Full results and method: **[`docs/Backtest_Report.md`](docs/Backtest_Report.md)**.
+
+Tested on real gold (GC=F) — 1m (~28d), 5m/15m (~60d), 1h (~2y), non-repainting
+signals, first-touch exits (stop-first on ambiguous bars), spread-aware.
+
+- **Win rate depends on your target.** Structure stop (just below the sweep): **~45–49%
+  at 1:1**, ~30–35% at 1:2, ~24–28% at 1:3, ~18–21% at 1:5, ~13–18% at 1:10.
+- The **literal fixed 2-pip stop is not viable at today's gold volatility** (~$4,400,
+  median 1m range ~16 pips) — win rate ~2–19%, negative expectancy.
+- Overall the strategy is **roughly break-even** on this data — not a guaranteed edge.
+  Size the stop to the sweep, not to a fixed 2 pips, and test in MT5's Strategy Tester
+  on your own broker's M1 XAUUSD feed.
+
+![Win rate vs target](docs/sniper_winrate.png)
+
+Reproduce: `tools/fetch_data.py` → `tools/backtest.py` → `tools/make_chart.py`.
 
 ---
 
