@@ -114,3 +114,37 @@ a fixed pip count.
 *Reproduce:* `tools/fetch_data.py` → `tools/backtest.py` (prints every table) →
 `tools/make_chart.py` (the figure). Detection logic: `tools/sniper_strategy.py`
 (identical to the indicator's `DetectBuy`/`DetectSell`).
+
+---
+
+## Stop-loss sweep — chasing a 90%+ win rate
+
+A full grid of stop sizes (5–300 pips) × target sizes (1–30 pips) was tested to find
+the highest win rate (`tools/grid_search.py`).
+
+**A 90%+ win rate is easy to produce — up to ~99%:**
+
+| Timeframe | Stop | Target | Win rate | Expectancy (after 2-pip spread) | Profit factor | Total |
+|---|--:|--:|--:|--:|--:|--:|
+| 1-minute  | 120 pip | 1 pip | **98.6%** | −2.71 pip/trade | 0.00 | −1,918 pip |
+| 1-minute  | 300 pip | 5 pip | 97.8% | −2.52 pip/trade | 0.54 | −1,492 pip |
+| 5-minute  | 300 pip | 1 pip | **99.1%** | −3.64 pip/trade | 0.00 | −1,245 pip |
+| 15-minute | 200 pip | 2 pip | **98.1%** | −3.74 pip/trade | 0.00 | −404 pip |
+
+**…but every one of them loses money.** Across the *entire* grid — all timeframes, all
+SL/TP combinations — **not a single configuration has positive expectancy after a
+realistic 2-pip spread.** The highest-win-rate settings are the *worst* performers.
+
+![The high-win-rate trap](winrate_trap.png)
+
+Why: win rate is bought with reward:risk. A 99% win rate needs a **huge stop and a
+tiny target** (e.g. 300-pip stop, 1-pip target). You win 1 pip ~99 times, then lose
+300 pips once — and a 1-pip target can't even clear a 2-pip spread, so the "wins"
+are net losers too (profit factor 0.00). **Win rate is the wrong thing to maximize;
+expectancy / profit factor is what pays.** The least-bad setting found was still
+negative (1-min, SL 80 / TP 30 → 73.9% win, −0.70 pip/trade).
+
+**Bottom line:** on this real-gold sample the strategy does not have a profitable
+configuration — not at any win rate. A 90–99% win rate is attainable but is a
+negative-expectancy martingale-style trap. Verify on your own broker's data in MT5,
+but do not treat a high win rate as a profitable system.
