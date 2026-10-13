@@ -144,7 +144,61 @@ are net losers too (profit factor 0.00). **Win rate is the wrong thing to maximi
 expectancy / profit factor is what pays.** The least-bad setting found was still
 negative (1-min, SL 80 / TP 30 → 73.9% win, −0.70 pip/trade).
 
-**Bottom line:** on this real-gold sample the strategy does not have a profitable
-configuration — not at any win rate. A 90–99% win rate is attainable but is a
-negative-expectancy martingale-style trap. Verify on your own broker's data in MT5,
-but do not treat a high win rate as a profitable system.
+**Bottom line:** a 90–99% win rate is attainable but is a negative-expectancy
+martingale-style trap. Win rate is the wrong objective — see the next section for the
+proper-R:R result.
+
+---
+
+## Proper targets (R:R ≥ 1:2) — the useful result
+
+Constrained to **reward:risk ≥ 1:2** (take-profit at least 2× the stop), with the
+stop size swept to find the best outcome (`tools/constrained_search.py`).
+
+First, set expectations: **at 1:2 a 90% win rate is impossible for any real strategy.**
+Break-even win rate is **33.3% at 1:2**, **28.6% at 1:2.5**, **25% at 1:3**. So the goal
+is the best win rate that is *also profitable* (profit factor > 1), not a vanity number.
+
+**Best win rate found at R:R ≥ 1:2: ~36%** — and, unlike the 90% configs, some of
+these are genuinely **profitable in-sample**:
+
+| Timeframe | Config | Win rate | Expectancy | Profit factor |
+|---|---|--:|--:|--:|
+| 1-minute | swing 5, SL 100 / TP 250 (1:2.5) | 35.7% | +10.5 pip | **1.17** |
+| 5-minute | swing 5, SL 70 / TP 210 (1:3) | 29.4% | +9.8 pip | **1.19** |
+| 5-minute | swing 5, SL 100 / TP 200 (1:2) | 36.5% | +7.1 pip | **1.11** |
+
+### Out-of-sample test (optimize on first 60%, verify on unseen last 40%)
+
+This is the test that separates a real edge from curve-fitting.
+
+![R:R ≥ 1:2 validation](sniper_rr2_validation.png)
+
+| Timeframe | In-sample PF | Out-of-sample PF | Verdict |
+|---|--:|--:|---|
+| **1-minute** (SL 100 / TP 250, 1:2.5) | 1.17 | **1.13** | **held up** |
+| 5-minute  | 1.21 | 0.79 | curve-fit (failed) |
+| 15-minute | 1.01 | 0.77 | curve-fit (failed) |
+| 1-hour    | 1.07 | 0.59 | curve-fit (failed) |
+
+**Only the 1-minute config survived out-of-sample.** But it is **marginal and fragile**,
+not a money printer:
+- Full 28-day sample: 182 trades, **35.7% win, +1,912 pips, but max drawdown −1,995
+  pips** — the worst drawdown is as large as the total profit (very bumpy).
+- Profit is concentrated: by time-third it was +1,968 / −175 / +119 pips — most of the
+  edge came from the first ~10 days.
+- It passes a 50% and 60% train/test split but **fails a 70% split** (OOS PF 0.79) —
+  the edge weakened in the most recent data.
+- ~**$10 risk per trade** (100-pip stop on gold); expect **10+ consecutive losers**.
+
+### Takeaways
+
+1. **At 1:2+, ~33–36% win rate is the realistic ceiling, and that's normal** (it clears
+   the ~29–33% break-even line). Chasing a higher win rate forces you back into the
+   tiny-TP trap.
+2. **1-minute, structure/≈100-pip stop, R:R 1:2 to 1:2.5** is the only setting with any
+   out-of-sample edge — and it's thin. The indicator's `InpRewardRatio` default is set
+   to **2.5** to match.
+3. Treat it as a **candidate to forward-test on your own broker's XAUUSD**, with strict
+   risk per trade — not as a proven system. One instrument, ~28 days of 1m data is a
+   small sample.

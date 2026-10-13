@@ -64,7 +64,7 @@ input ENUM_DIRN InpDirection       = DIR_BOTH; // Allowed signal direction
 input double   InpStopPips         = 2.0;    // Stop-loss distance in pips  (video = 2 pips)
 input bool     InpUseStructureStop = false;  // Put SL just beyond the sweep extreme instead of fixed pips
 input double   InpStopBufferPips   = 1.0;    // Extra buffer beyond sweep extreme (structure stop)
-input double   InpRewardRatio      = 10.0;   // Take-profit target = Reward : Risk multiple
+input double   InpRewardRatio      = 2.5;    // Take-profit target = Reward : Risk multiple (backtest-best; keep >= 2)
 
 input group             "===== Visuals ====="
 input bool     InpShowABCD         = true;   // Draw A / B / C / D labels
