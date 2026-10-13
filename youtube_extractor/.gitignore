@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+output/
+output_whisper/
+audio/
+cookies.txt
