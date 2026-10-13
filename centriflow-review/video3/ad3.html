@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#04070a; --ink:#f3faf8; --mut:#9fb4b0;
+    --teal:#16e6a6; --cyan:#2bc4ff; --amber:#ffab2e; --coral:#ff6a5a; --blue:#2f7bff;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{background:#000}
+  #stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--bg);
+    font-family:'Inter',system-ui,Arial,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+  #content{position:absolute;inset:0;transform-origin:50% 50%;will-change:transform}
+  .dsp{font-family:'Space Grotesk','Inter',sans-serif;letter-spacing:-.02em}
+  .c{position:absolute;will-change:opacity,transform}
+  .grad{background:linear-gradient(100deg,var(--teal),var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .grada{background:linear-gradient(100deg,var(--amber),var(--teal));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .gradw{background:linear-gradient(100deg,#fff,#bff6e6 55%,#bfe9ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+  #mesh{position:absolute;inset:-25%;filter:blur(72px)}
+  #mesh .b{position:absolute;border-radius:50%}
+  #grid{position:absolute;inset:0;opacity:.06;background-image:radial-gradient(rgba(255,255,255,.7) 1px,transparent 1.4px);background-size:48px 48px}
+  .vig{position:absolute;inset:0;pointer-events:none;background:radial-gradient(130% 100% at 50% 45%,transparent 42%,rgba(0,0,0,.62) 100%)}
+  #flash{position:absolute;inset:0;background:radial-gradient(circle at 50% 45%,#dffff5,#8ffce0);opacity:0;mix-blend-mode:screen}
+  #sweep{position:absolute;top:-10%;left:0;width:460px;height:120%;opacity:0;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),rgba(190,255,235,.15),transparent);transform:skewX(-16deg);mix-blend-mode:screen}
+  .tint{position:absolute;inset:0;opacity:0;mix-blend-mode:screen}
+
+  .kick{font-weight:700;font-size:24px;letter-spacing:.4em;text-transform:uppercase;color:var(--teal)}
+  .vbar{width:10px;border-radius:6px;background:linear-gradient(var(--teal),var(--cyan));transform-origin:top}
+  h1{font-weight:700;font-size:120px;line-height:.98}
+  .mega{font-weight:700;font-size:170px;line-height:.92;letter-spacing:-.03em}
+  .big{font-weight:700;font-size:150px;line-height:.95}
+  .lead{font-weight:500;font-size:40px;line-height:1.3;color:var(--mut)}
+  .uline{height:16px;border-radius:10px;background:linear-gradient(90deg,var(--teal),var(--cyan));transform-origin:left}
+  .ghost{padding:14px 22px;border-radius:14px;background:rgba(10,22,20,.72);border:1px solid rgba(255,255,255,.08);font-weight:600;font-size:26px;color:#bfe6dc;white-space:nowrap}
+
+  .mark{display:inline-flex;align-items:center;gap:22px}
+  .hex{width:104px;height:104px;position:relative;display:grid;place-items:center}
+  .hex svg{position:absolute;inset:0}
+  .hex b{font-weight:700;font-size:48px;background:linear-gradient(135deg,#16e6a6,#2bc4ff);-webkit-background-clip:text;background-clip:text;color:transparent;font-family:'Space Grotesk'}
+  .wm{font-weight:700;font-size:72px}
+  .wm .g{background:linear-gradient(100deg,#16e6a6,#2bc4ff);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .wm.sm{font-size:34px}
+
+  .card{position:absolute;border-radius:22px;overflow:hidden;box-shadow:0 60px 140px rgba(0,0,0,.72),0 0 0 1px rgba(22,230,166,.14)}
+  .card img{width:100%;height:100%;object-fit:cover;object-position:50% 0%}
+  .card.tl img{transform:rotate(-1.4deg) scale(1.1)} .card.tr img{transform:rotate(1.4deg) scale(1.1)}
+  .cshade{position:absolute;inset:0;background:linear-gradient(180deg,transparent 45%,rgba(3,7,8,.84))}
+  .clabel{position:absolute;bottom:52px} .clabel.l{left:60px;text-align:left} .clabel.r{right:60px;text-align:right}
+  .clabel .n{font-weight:700;font-size:62px} .clabel .d{font-weight:500;font-size:33px;color:#cfeee6;margin-top:6px}
+  .pill{position:absolute;top:44px;padding:14px 26px;border-radius:999px;font-weight:700;font-size:28px;background:rgba(22,230,166,.15);border:1px solid rgba(22,230,166,.5);color:#bff6e6}
+  .pill.r{right:48px} .pill.l{left:48px}
+
+  .marqwrap{position:absolute;left:0;right:0;overflow:hidden;height:92px;display:flex;align-items:center;background:linear-gradient(90deg,rgba(255,255,255,.02),rgba(255,255,255,.05),rgba(255,255,255,.02));border-top:1px solid rgba(255,255,255,.07);border-bottom:1px solid rgba(255,255,255,.07)}
+  .marq{display:flex;gap:64px;white-space:nowrap;will-change:transform}
+  .marq span{font-weight:700;font-size:38px;color:#7fa39a;letter-spacing:.02em}
+  .marq i{color:var(--amber);font-style:normal}
+
+  .btn{display:inline-flex;align-items:center;gap:16px;padding:28px 50px;border-radius:16px;font-weight:800;font-size:38px;color:#04120d;background:linear-gradient(100deg,#16e6a6,#2bc4ff);box-shadow:0 26px 70px rgba(22,230,166,.42)}
+  .url{font-weight:700;font-size:58px}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="mesh">
+    <div class="b" id="m1" style="width:1000px;height:1000px;background:radial-gradient(circle,#0fae8a,transparent 60%)"></div>
+    <div class="b" id="m2" style="width:900px;height:900px;background:radial-gradient(circle,#1b74ff,transparent 60%)"></div>
+    <div class="b" id="m3" style="width:820px;height:820px;background:radial-gradient(circle,#16c8d6,transparent 62%)"></div>
+    <div class="b" id="m4" style="width:720px;height:720px;background:radial-gradient(circle,#e68a1f,transparent 64%)"></div>
+  </div>
+  <div id="grid"></div>
+
+  <!-- agitate full-screen color tints -->
+  <div class="tint" id="tintA" style="background:radial-gradient(circle at 50% 45%,rgba(255,171,46,.5),transparent 60%)"></div>
+  <div class="tint" id="tintB" style="background:radial-gradient(circle at 50% 45%,rgba(43,196,255,.5),transparent 60%)"></div>
+  <div class="tint" id="tintC" style="background:radial-gradient(circle at 50% 45%,rgba(255,106,90,.5),transparent 60%)"></div>
+
+  <div id="content">
+  <!-- ===== A · HOOK ===== -->
+  <div class="c vbar" data-in="0.3" data-dur=".5" data-out="4.2" data-outdur=".3" data-anim="rise" style="left:170px;top:300px;height:250px"></div>
+  <div class="c dsp" data-in="0.4" data-dur=".6" data-out="4.2" data-outdur=".35" data-anim="rise" style="left:220px;top:300px"><h1>Busywork is</h1></div>
+  <div class="c dsp" data-in="0.95" data-dur=".6" data-out="4.2" data-outdur=".35" data-anim="rise" style="left:220px;top:420px"><h1 class="grad">stealing your day.</h1></div>
+  <div class="c uline" data-in="1.7" data-dur=".7" data-out="4.2" data-outdur=".3" data-anim="swipe" style="left:224px;top:560px;width:720px"></div>
+  <div class="c ghost" data-in="0.7" data-dur=".5" data-out="4.1" data-outdur=".3" data-anim="pop" data-float data-ph="0.3" style="left:1360px;top:250px">⟳ 40 tabs open</div>
+  <div class="c ghost" data-in="1.0" data-dur=".5" data-out="4.1" data-outdur=".3" data-anim="pop" data-float data-ph="1.4" style="left:1480px;top:430px">✉ 128 unread</div>
+  <div class="c ghost" data-in="1.3" data-dur=".5" data-out="4.1" data-outdur=".3" data-anim="pop" data-float data-ph="2.6" style="left:1360px;top:620px">▦ 12 spreadsheets</div>
+
+  <!-- ===== B · AGITATE ===== -->
+  <div class="c dsp mega" data-in="4.5" data-dur=".4" data-out="5.85" data-outdur=".25" data-anim="zoom" style="left:50%;top:430px;text-align:center" data-cx data-col="amber">Chasing invoices.</div>
+  <div class="c dsp mega" data-in="6.0" data-dur=".4" data-out="7.25" data-outdur=".25" data-anim="zoom" style="left:50%;top:430px;text-align:center" data-cx data-col="cyan">Booking meetings.</div>
+  <div class="c dsp mega" data-in="7.4" data-dur=".4" data-out="8.75" data-outdur=".25" data-anim="zoom" style="left:50%;top:430px;text-align:center" data-cx data-col="coral">Copying data.</div>
+
+  <!-- ===== C · REVEAL ===== -->
+  <div class="c" data-in="9.1" data-dur=".7" data-out="13.7" data-outdur=".4" data-anim="pop" style="left:50%;top:330px" data-cx>
+    <div class="mark"><div class="hex"><svg viewBox="0 0 100 100"><polygon points="50,4 91,27 91,73 50,96 9,73 9,27" fill="none" stroke="url(#g)" stroke-width="4"/><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16e6a6"/><stop offset="1" stop-color="#2bc4ff"/></linearGradient></defs></svg><b>C</b></div><div class="wm dsp">Go<span class="g">Centriflow</span></div></div>
+  </div>
+  <div class="c dsp" data-in="9.9" data-dur=".7" data-out="13.7" data-outdur=".4" data-anim="rise" style="left:50%;top:470px;text-align:center" data-cx><div class="big">Meet your <span class="grad">AI workforce.</span></div></div>
+  <div class="c" data-in="10.9" data-dur=".6" data-out="13.7" data-outdur=".4" data-anim="rise" style="left:50%;top:812px;text-align:center" data-cx><div class="lead">Custom AI agents, built around <b style="color:#fff">your</b> business.</div></div>
+
+  <!-- ===== D · SHOWCASE ===== -->
+  <div class="c wm sm dsp" data-in="14.1" data-dur=".5" data-out="23.9" data-outdur=".4" data-anim="down" style="left:110px;top:70px"><span style="opacity:.9">Go</span><span class="g">Centriflow</span></div>
+
+  <div class="c card tl" data-in="14.2" data-dur=".5" data-out="16.5" data-outdur=".35" data-anim="right" data-kb style="left:50%;top:150px;width:1500px;height:730px" data-cx>
+    <img src="assets/hr.webp"/><div class="cshade"></div>
+    <div class="clabel l"><div class="n dsp">HR Agent</div><div class="d">Offer letters &amp; approvals, drafted in seconds</div></div><div class="pill r">15+ document types</div>
+  </div>
+  <div class="c card tr" data-in="16.6" data-dur=".5" data-out="18.9" data-outdur=".35" data-anim="left" data-kb style="left:50%;top:150px;width:1500px;height:730px" data-cx>
+    <img src="assets/invoice.webp"/><div class="cshade"></div>
+    <div class="clabel r"><div class="n dsp">Invoice Agent</div><div class="d">Created, sent &amp; reconciled — automatically</div></div><div class="pill l">paid faster</div>
+  </div>
+  <div class="c card tl" data-in="19.0" data-dur=".5" data-out="21.3" data-outdur=".35" data-anim="right" data-kb style="left:50%;top:150px;width:1500px;height:730px" data-cx>
+    <img src="assets/sales.webp"/><div class="cshade"></div>
+    <div class="clabel l"><div class="n dsp">Sales Agent</div><div class="d">Finds &amp; qualifies leads around the clock</div></div><div class="pill r">71 prospects</div>
+  </div>
+  <div class="c card tr" data-in="21.4" data-dur=".5" data-out="23.8" data-outdur=".35" data-anim="left" data-kb style="left:50%;top:150px;width:1500px;height:730px" data-cx>
+    <img src="assets/social.jpg"/><div class="cshade"></div>
+    <div class="clabel r"><div class="n dsp">Social Agent</div><div class="d">A month of on-brand content, planned</div></div><div class="pill l">14 posts scheduled</div>
+  </div>
+
+  <div class="c marqwrap" data-in="14.1" data-dur=".5" data-out="23.9" data-outdur=".4" data-anim="fade" style="top:928px">
+    <div class="marq" id="marq">
+      <span>Slack <i>·</i> HubSpot <i>·</i> Stripe <i>·</i> QuickBooks <i>·</i> Google Workspace <i>·</i> Gmail <i>·</i> WhatsApp <i>·</i> Calendar <i>·</i> Drive <i>·</i> Pinecone <i>·</i> SAP <i>·</i> Oracle <i>·</i></span>
+      <span>Slack <i>·</i> HubSpot <i>·</i> Stripe <i>·</i> QuickBooks <i>·</i> Google Workspace <i>·</i> Gmail <i>·</i> WhatsApp <i>·</i> Calendar <i>·</i> Drive <i>·</i> Pinecone <i>·</i> SAP <i>·</i> Oracle <i>·</i></span>
+    </div>
+  </div>
+
+  <!-- ===== E · CTA ===== -->
+  <div class="c dsp" data-in="24.2" data-dur=".5" data-out="26.5" data-outdur=".3" data-anim="zoom" style="left:50%;top:405px;text-align:center" data-cx><div class="mega grada" style="font-size:128px;white-space:nowrap">40+ hours back.</div></div>
+  <div class="c dsp" data-in="24.7" data-dur=".5" data-out="26.5" data-outdur=".3" data-anim="rise" style="left:50%;top:585px;text-align:center" data-cx><div class="lead" style="font-size:52px;color:#e7f3ef">Every single week.</div></div>
+
+  <div class="c" data-in="26.7" data-dur=".6" data-anim="pop" style="left:50%;top:300px" data-cx>
+    <div class="mark"><div class="hex"><svg viewBox="0 0 100 100"><polygon points="50,4 91,27 91,73 50,96 9,73 9,27" fill="none" stroke="url(#g2)" stroke-width="4"/><defs><linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#16e6a6"/><stop offset="1" stop-color="#2bc4ff"/></linearGradient></defs></svg><b>C</b></div><div class="wm dsp">Go<span class="g">Centriflow</span></div></div>
+  </div>
+  <div class="c dsp" data-in="27.1" data-dur=".55" data-anim="rise" style="left:50%;top:480px;text-align:center" data-cx><div class="big gradw" style="font-size:120px;white-space:nowrap">Automate everything.</div></div>
+  <div class="c" data-in="27.9" data-dur=".5" data-anim="rise" style="left:50%;top:720px;text-align:center" data-cx><div class="url grad">gocentriflow.ai</div></div>
+  <div class="c" data-in="28.4" data-dur=".5" data-anim="pop" style="left:50%;top:840px" data-cx><div class="btn">Start free →</div></div>
+  </div><!-- /content -->
+
+  <div id="sweep"></div>
+  <div id="flash"></div>
+  <div class="vig"></div>
+</div>
+
+<script>
+  window.DURATION=30.0; window.FPS=30;
+  var ease=p=>1-Math.pow(1-p,3), easeBack=p=>{var c=1.9;return 1+(--p)*p*((c+1)*p+c);};
+  var clamp=(v,a,b)=>v<a?a:v>b?b:v;
+  var COL={amber:'#ffab2e',cyan:'#2bc4ff',coral:'#ff6a5a',teal:'#16e6a6'};
+  var ANIM={
+    up:{ex:0,ey:46,es:1,ox:0,oy:-30,os:1},down:{ex:0,ey:-46,es:1,ox:0,oy:28,os:1},
+    left:{ex:80,ey:0,es:1,ox:-50,oy:0,os:1},right:{ex:-90,ey:0,es:1,ox:60,oy:0,os:1},
+    rise:{ex:0,ey:80,es:.96,ox:0,oy:-46,os:1},zoom:{ex:0,ey:0,es:1.14,ox:0,oy:0,os:.94},
+    pop:{ex:0,ey:18,es:.8,ox:0,oy:-10,os:.97,eb:1},fade:{ex:0,ey:0,es:1,ox:0,oy:0,os:1}
+  };
+  var nodes=[].slice.call(document.querySelectorAll('.c'));
+  nodes.forEach(el=>{el.__in=parseFloat(el.getAttribute('data-in'));el.__dur=parseFloat(el.getAttribute('data-dur')||'.6');
+    el.__out=el.hasAttribute('data-out')?parseFloat(el.getAttribute('data-out')):null;el.__odur=parseFloat(el.getAttribute('data-outdur')||'.4');
+    var a=el.getAttribute('data-anim')||'up';el.__a=ANIM[a]||ANIM.up;el.__swipe=(a==='swipe');
+    el.__cx=el.hasAttribute('data-cx');el.__float=el.hasAttribute('data-float');el.__ph=parseFloat(el.getAttribute('data-ph')||'0');el.__kb=el.hasAttribute('data-kb');
+    var col=el.getAttribute('data-col');if(col)el.style.color=COL[col];});
+  var marq=document.getElementById('marq'), content=document.getElementById('content');
+  function spike(t,c,w){return Math.exp(-Math.pow((t-c)/w,2));}
+
+  window.seekTo=function(ms){
+    var t=ms/1000;
+    var M=[['m1',320,.22,120,.18],['m2',1250,.26,560,.24],['m3',820,.2,320,.28],['m4',1480,.3,760,.2]];
+    M.forEach((d,i)=>{var e=document.getElementById(d[0]);e.style.transform='translate('+(d[1]+Math.sin(t*d[2]+i)*170)+'px,'+(d[3]+Math.cos(t*d[4]+i)*150)+'px)';});
+    document.getElementById('mesh').style.opacity = t>=8.8&&t<14?.98:(t>=26.6?1:.7);
+
+    // agitate tints
+    document.getElementById('tintA').style.opacity=(spike(t,5.1,.7)*.8).toFixed(3);
+    document.getElementById('tintB').style.opacity=(spike(t,6.6,.7)*.8).toFixed(3);
+    document.getElementById('tintC').style.opacity=(spike(t,8.0,.7)*.8).toFixed(3);
+
+    // DRAMATIC transitions: zoom-punch + flash + light sweep
+    var cuts=[4.5,6.0,7.4,8.9,14.1,24.1];
+    var punch=1; cuts.forEach(c=>punch+=0.045*spike(t,c,0.11));
+    content.style.transform='scale('+punch.toFixed(4)+')';
+    var fl=0.62*spike(t,8.9,0.14)+0.68*spike(t,24.1,0.15)+0.3*spike(t,4.5,0.1)+0.34*spike(t,14.1,0.13);
+    document.getElementById('flash').style.opacity=clamp(fl,0,1).toFixed(3);
+    var sweeps=[8.9,14.2,16.6,19.0,21.4,24.1], sw=document.getElementById('sweep'), best=0,bx=-600;
+    sweeps.forEach(ts=>{var p=(t-(ts-0.05))/0.6; if(p>=0&&p<=1){var o=Math.sin(Math.PI*p)*0.6; if(o>best){best=o;bx=-600+p*2800;}}});
+    sw.style.opacity=best.toFixed(3); sw.style.transform='translateX('+bx.toFixed(0)+'px) skewX(-16deg)';
+
+    if(marq) marq.style.transform='translateX('+(-((t-14.1)*120 % (marq.scrollWidth/2))).toFixed(1)+'px)';
+
+    nodes.forEach(el=>{var a=el.__a;
+      var ip=clamp((t-el.__in)/el.__dur,0,1),ipe=a.eb?easeBack(ip):ease(ip);
+      var op=el.__out!=null?clamp((t-el.__out)/el.__odur,0,1):0,ope=ease(op);
+      var vis=(t>=el.__in)&&(el.__out==null||t<el.__out+el.__odur+0.001);
+      if(!vis){el.style.opacity='0';return;}
+      var pre=el.__cx?'translateX(-50%) ':'';
+      if(el.__swipe){el.style.opacity=(ip*(1-op)).toFixed(3);el.style.transform=pre+'scaleX('+ipe.toFixed(3)+')';return;}
+      var opacity=ip*(1-op);
+      var tx=a.ex*(1-ipe)+a.ox*ope,ty=a.ey*(1-ipe)+a.oy*ope,sc=1+(a.es-1)*(1-ipe)+(a.os-1)*ope;
+      if(el.__float){tx+=Math.sin(t*1.1+el.__ph)*7;ty+=Math.cos(t*.9+el.__ph)*6;}
+      if(el.__kb){var life=clamp((t-el.__in)/2.4,0,1);sc*=1+0.045*life;ty+=-6*life;}
+      el.style.opacity=opacity.toFixed(3);el.style.transform=pre+'translate('+tx.toFixed(2)+'px,'+ty.toFixed(2)+'px) scale('+sc.toFixed(3)+')';
+    });
+  };
+  window.__ready=false;
+  (document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(()=>{window.seekTo(0);window.__ready=true;});
+  setTimeout(()=>{window.__ready=true;},1600);
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+frames/
+preview/
+audio/*.wav
+audio/*.mp3
+audio/piper/
+out/base_silent.mp4
