@@ -12,6 +12,15 @@ frame-by-frame from the reference video (XAUUSD / Gold).
 - **What it is not:** it does **not** send orders (that is an Expert Advisor's job).
   It marks the setup, draws Entry / Stop / Target and the reward/risk boxes, and alerts you.
 
+### Two builds in this repo
+
+| File | Design |
+|---|---|
+| `SniperEntry_FalseBreakout.mq5` | **Single-timeframe.** Detects the A-B-C-D structure, sweep and reclaim on the chart it's attached to. Both long & short. |
+| `SniperEntry_Combo.mq5` | **Multi-timeframe.** Support/resistance is a confirmed pivot on a **higher timeframe (M15 by default)** — the way the video marks the level on M15 then executes on M1 — plus a pending-stop guide, tick-normalised levels, setup expiry/cooldown, a same-candle ambiguity note and an on-chart panel. Attach to **M1**, context **M15**. Self-contained (no external header). |
+
+Both are non-repainting (closed-bar signals) and place no orders.
+
 ---
 
 ## The setup in one picture
