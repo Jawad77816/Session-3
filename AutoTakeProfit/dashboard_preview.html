@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoTP Dashboard Preview</title>
+<style>
+  :root{
+    --bg:#0b0f16; --panel:#0f131b; --card:#191f2b; --cardbd:#262e3e;
+    --white:#ecf0f5; --mute:#808b9e; --gold:#e2b250; --green:#2ecc80;
+    --red:#eb4e5c; --amber:#f0b648; --blue:#5498f0; --ink:#14141a;
+  }
+  html,body{margin:0;background:var(--bg);color:var(--white);
+    font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;}
+  .wrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;
+    gap:14px;padding:24px 16px;box-sizing:border-box;}
+  .note{color:var(--mute);font-size:13px;max-width:360px;text-align:center;line-height:1.5}
+  /* the panel mirrors the MQL5 layout: W=332, cards 2-up, status + alert rows */
+  .panel{width:332px;background:var(--panel);border:1px solid var(--cardbd);
+    box-sizing:border-box;padding:12px;}
+  .hd{display:flex;align-items:center;gap:10px;height:40px;position:relative}
+  .logo{width:32px;height:32px;background:var(--gold);color:var(--ink);
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:17px}
+  .ttl{font-weight:700;font-size:16px;line-height:1.1}
+  .sub{color:var(--mute);font-size:10px;margin-top:2px;letter-spacing:.3px}
+  .ver{position:absolute;right:0;top:3px;border:1px solid var(--gold);color:var(--gold);
+    font-size:10px;padding:3px 9px;border-radius:11px}
+  .div{height:1px;background:var(--cardbd);margin:10px 0}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+  .card{background:var(--card);border:1px solid var(--cardbd);border-left:3px solid var(--cardbd);
+    padding:9px 12px;box-sizing:border-box;height:54px}
+  .card .lbl{color:var(--mute);font-size:10px;letter-spacing:.4px}
+  .card .val{font-size:16px;font-weight:700;margin-top:4px}
+  .acc-gold{border-left-color:var(--gold)} .acc-blue{border-left-color:var(--blue)}
+  .acc-green{border-left-color:var(--green)} .acc-red{border-left-color:var(--red)}
+  .green{color:var(--green)} .red{color:var(--red)} .white{color:var(--white)} .mute{color:var(--mute)}
+  .status{display:flex;align-items:center;gap:10px;background:var(--card);
+    border:1px solid var(--cardbd);border-left:3px solid var(--red);padding:9px 14px;margin-top:9px;height:46px;box-sizing:border-box}
+  .dot{width:10px;height:10px;border-radius:50%;background:var(--red)}
+  .status .k{color:var(--mute);font-size:10px} .status .v{font-weight:700;font-size:15px;color:var(--red)}
+  .alert{background:#28181c;border:1px solid var(--cardbd);border-left:3px solid var(--red);
+    padding:9px 14px;margin-top:9px;height:54px;box-sizing:border-box}
+  .alert .t{color:var(--red);font-weight:700;font-size:13px}
+  .alert .d{color:var(--mute);font-size:10px;margin-top:5px}
+  .foot{display:flex;justify-content:space-between;color:var(--mute);font-size:10px;margin-top:10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="note">Preview of the redesigned on-chart dashboard (card layout, dark theme).
+    Sample data matches a "news window" state.</div>
+
+  <div class="panel">
+    <div class="hd">
+      <div class="logo">A</div>
+      <div>
+        <div class="ttl">AUTO TP GUARD</div>
+        <div class="sub">TP&nbsp;&nbsp;/&nbsp;&nbsp;LIMITS&nbsp;&nbsp;/&nbsp;&nbsp;NEWS</div>
+      </div>
+      <div class="ver">v2.0</div>
+    </div>
+    <div class="div"></div>
+
+    <div class="grid">
+      <div class="card acc-gold"><div class="lbl">ACCOUNT BALANCE</div><div class="val white">$1,806.54</div></div>
+      <div class="card acc-green"><div class="lbl">TODAY'S P/L</div><div class="val green">+$337.83</div></div>
+      <div class="card acc-blue"><div class="lbl">EQUITY</div><div class="val white">$1,806.54</div></div>
+      <div class="card acc-green"><div class="lbl">FLOATING P/L</div><div class="val green">+$0.00</div></div>
+      <div class="card acc-green"><div class="lbl">DAILY TARGET</div><div class="val mute">OFF</div></div>
+      <div class="card acc-red"><div class="lbl">DAILY LOSS CAP</div><div class="val mute">OFF</div></div>
+    </div>
+
+    <div class="status">
+      <div class="dot"></div>
+      <div><div class="k">STATUS</div><div class="v">STOP TRADING - NEWS</div></div>
+    </div>
+
+    <div class="alert">
+      <div class="t">News: CPI m/m</div>
+      <div class="d">Resume 15:38&nbsp;&nbsp;(in 0h 08m)</div>
+    </div>
+
+    <div class="foot">
+      <div>AutoTP v2&nbsp;&nbsp;|&nbsp;&nbsp;TP 10 pips</div>
+      <div>MT5 Calendar&nbsp;&nbsp;|&nbsp;&nbsp;12 evt</div>
+    </div>
+  </div>
+
+  <div class="note">When clear, the status turns green (<b>TRADING ALLOWED</b>) and the box
+    shows the next event with a <b>“Stop in”</b> countdown.</div>
+</div>
+</body>
+</html>

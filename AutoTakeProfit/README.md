@@ -150,16 +150,22 @@ worked example so you can confirm before trading.
 
 ## Reading the dashboard
 
-- **Balance / Equity** — account figures.
-- **Floating P/L** — profit/loss of currently open trades (green up / red down).
-- **DAILY P/L** — your net result today vs the **Daily target** and **Daily loss cap**.
-- **Status strip** — `TRADING ALLOWED` (green), `STOP TRADING - NEWS` (red during
-  the window), `DAILY TARGET HIT - DONE` (green), or `BLOCKED - DAILY LOSS LIMIT`
-  (red).
-- **News row** — when clear: the next event + **"Stop in"** (countdown to the
-  30-min-before STOP moment). During a window: the event name + **"Resume in"**
-  (countdown to when it's safe to trade again).
+The dashboard is a dark **card panel** (see `dashboard_preview.html` for a mock-up):
+
+- **Header** — "AUTO TP GUARD" with a version badge.
+- **Six metric cards** — `ACCOUNT BALANCE`, `TODAY'S P/L`, `EQUITY`, `FLOATING P/L`
+  (green up / red down), plus `DAILY TARGET` and `DAILY LOSS CAP` (your limits, or
+  `OFF`). `TODAY'S P/L` is your net result today vs those limits.
+- **Status row** — a colored dot + `TRADING ALLOWED` (green), `STOP TRADING - NEWS`
+  (red during a window), `DAILY TARGET HIT` (green) or `DAILY LOSS LIMIT HIT` (red).
+- **Alert box** — the actionable line: during a window, the event name + **"Resume
+  HH:MM (in Xh YYm)"**; when clear, the next event + **"Stop HH:MM (in Xh YYm)"**
+  (the countdown to the 30-min-before STOP moment).
 - **Footer** — TP size, active news source, and events loaded.
+
+> The panel uses a fixed width with each value on its own card line, so text can't
+> overlap even when Windows display scaling enlarges the fonts. If the panel ever
+> sits awkwardly, move it with the **Dashboard X / Y** inputs.
 
 ---
 

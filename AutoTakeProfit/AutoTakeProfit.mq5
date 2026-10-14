@@ -111,16 +111,20 @@ bool     g_dailyLatched   = false;   // sticky for the rest of the day once a li
 datetime g_dailyBlockStart= 0;
 string   g_dailyReason    = "";
 
-// dashboard palette
-#define PFX "ATP_"
-#define COL_PANEL  C'28,33,45'
-#define COL_BORDER C'46,54,70'
-#define COL_HEAD   C'36,118,221'
-#define COL_TEXT   C'228,232,240'
-#define COL_MUTE   C'140,151,168'
-#define COL_GREEN  C'38,194,129'
-#define COL_RED    C'233,80,96'
-#define COL_AMBER  C'240,176,64'
+// dashboard palette (dark, card-based)
+#define PFX            "ATP_"
+#define COL_BG         C'15,19,27'
+#define COL_CARD       C'25,31,43'
+#define COL_CARDBORDER C'38,46,62'
+#define COL_BORDER     C'38,46,62'
+#define COL_WHITE      C'236,239,245'
+#define COL_MUTE       C'128,139,158'
+#define COL_GOLD       C'226,178,80'
+#define COL_GREEN      C'46,204,128'
+#define COL_RED        C'235,78,92'
+#define COL_AMBER      C'240,182,72'
+#define COL_BLUE       C'84,152,240'
+#define COL_INK        C'20,20,26'
 
 //==================================================================
 //  Initialization
@@ -800,11 +804,39 @@ void SetText(const string key, const int x, const int y, const string text,
    ObjectSetString(0, nm, OBJPROP_TEXT, text);
 }
 
-void Row(const string key, const int lx, const int rx, const int y,
-         const string label, const string value, const color vcol, const int vsize = 10)
+// group an integer string with thousands commas: "1806" -> "1,806"
+string Group(const string ip)
 {
-   SetText("l_" + key, lx, y, label, COL_MUTE, 9);
-   SetText("v_" + key, rx, y, value, vcol, vsize, "Segoe UI", ANCHOR_RIGHT_UPPER);
+   string g = "";
+   int c = 0;
+   for(int i = StringLen(ip) - 1; i >= 0; i--)
+   {
+      g = StringSubstr(ip, i, 1) + g;
+      c++;
+      if(c % 3 == 0 && i > 0) g = "," + g;
+   }
+   return g;
+}
+
+// pretty money: "$1,806.54" / "+$337.83" / "-$120.00"
+string Money(const double v, const string prefix, const bool showSign)
+{
+   const string sign = (v < 0) ? "-" : (showSign ? "+" : "");
+   const string s    = DoubleToString(MathAbs(v), 2);
+   const int    dot  = StringFind(s, ".");
+   const string ip   = StringSubstr(s, 0, dot);
+   const string fp   = StringSubstr(s, dot);
+   return sign + prefix + Group(ip) + fp;
+}
+
+// one metric card: small label on top, big value below, colored left accent
+void DrawCard(const string key, const int x, const int y, const int w, const int h,
+              const string label, const string value, const color vcol, const color accent)
+{
+   SetRect("c_"  + key, x,     y, w, h, COL_CARD, COL_CARDBORDER);
+   SetRect("ca_" + key, x,     y, 3, h, accent,   accent);
+   SetText("cl_" + key, x + 12, y + 9,  label, COL_MUTE, 8);
+   SetText("cv_" + key, x + 12, y + 25, value, vcol,     12, "Segoe UI Semibold");
 }
 
 string Clip(string s, const int n)
@@ -823,58 +855,108 @@ string CountStr(const datetime target)
 
 void UpdateDashboard()
 {
-   const int X = InpDashX, Y = InpDashY, W = 300, pad = 14, hh = 34, H = 300;
-   const int lx = X + pad, rx = X + W - pad;
+   const int X = InpDashX, Y = InpDashY;
+   const int W = 332, pad = 12, gap = 9, headerH = 50;
+   const int cardW = (W - 2 * pad - gap) / 2;   // two columns
+   const int cardH = 54;
+   const int statH = 46, alH = 54;
+   const int hx = X + pad;                        // content left
+   const int c2x = X + pad + cardW + gap;         // second column x
 
-   SetRect("bg", X, Y, W, H, COL_PANEL, COL_BORDER);
-   SetRect("hd", X, Y, W, hh, COL_HEAD, COL_HEAD);
-   SetText("title", lx, Y + 9, "AUTO TP  -  RISK GUARD", clrWhite, 11, "Segoe UI Semibold");
-   SetText("sym",   rx, Y + 10, _Symbol, (color)C'205,223,255', 9, "Segoe UI", ANCHOR_RIGHT_UPPER);
+   // --- precompute all Y positions so the background can cover everything ---
+   const int yDiv  = Y + headerH;
+   const int r0    = yDiv + 8;
+   const int r1    = r0 + cardH + gap;
+   const int r2    = r1 + cardH + gap;
+   const int yStat = r2 + cardH + gap;
+   const int yAl   = yStat + statH + gap;
+   const int yFoot = yAl + alH + 8;
+   const int H     = (yFoot + 16) - Y;
 
    const double bal = AccountInfoDouble(ACCOUNT_BALANCE);
    const double eq  = AccountInfoDouble(ACCOUNT_EQUITY);
    const string cur = AccountInfoString(ACCOUNT_CURRENCY);
+   const string sym = (cur == "USD") ? "$" : (cur + " ");
 
-   int y = Y + hh + 10;
-   Row("bal", lx, rx, y,       "Balance",       DoubleToString(bal,2)+" "+cur, COL_TEXT);        y += 24;
-   Row("eq",  lx, rx, y,       "Equity",        DoubleToString(eq,2)+" "+cur,  COL_TEXT);        y += 24;
-   Row("fl",  lx, rx, y,       "Floating P/L",  MoneyStr(g_floating), g_floating>=0?COL_GREEN:COL_RED); y += 26;
+   // --- panel + header ---
+   SetRect("bg",  X, Y, W, H, COL_BG, COL_BORDER);
+   SetRect("logo", hx, Y + 9, 32, 32, COL_GOLD, COL_GOLD);
+   SetText("logoT", hx + 16, Y + 13, "A", COL_INK, 15, "Segoe UI Semibold", ANCHOR_UPPER);
+   SetText("title", hx + 42, Y + 10, "AUTO TP GUARD", COL_WHITE, 13, "Segoe UI Semibold");
+   SetText("sub",   hx + 42, Y + 31, "TP  /  LIMITS  /  NEWS", COL_MUTE, 8);
+   SetRect("verbg", X + W - pad - 46, Y + 13, 46, 20, COL_CARD, COL_GOLD);
+   SetText("ver",   X + W - pad - 23, Y + 16, "v2.0", COL_GOLD, 8, "Segoe UI", ANCHOR_UPPER);
+   SetRect("div",   X + pad, yDiv, W - 2 * pad, 1, COL_BORDER, COL_BORDER);
 
-   Row("dpl", lx, rx, y,       "DAILY P/L",     MoneyStr(g_dailyPL),  g_dailyPL>=0?COL_GREEN:COL_RED, 12); y += 25;
-   Row("tgt", lx, rx, y,       "Daily target",  InpDailyProfitTarget>0 ? "+"+DoubleToString(InpDailyProfitTarget,2)+" "+cur : "(off)", InpDailyProfitTarget>0?COL_TEXT:COL_MUTE); y += 24;
-   Row("cap", lx, rx, y,       "Daily loss cap",InpDailyLossLimit>0    ? "-"+DoubleToString(InpDailyLossLimit,2)+" "+cur    : "(off)", InpDailyLossLimit>0?COL_TEXT:COL_MUTE);   y += 20;
+   // --- metric cards ---
+   DrawCard("bal", hx,  r0, cardW, cardH, "ACCOUNT BALANCE", sym + Money(bal, "", false), COL_WHITE, COL_GOLD);
+   DrawCard("dpl", c2x, r0, cardW, cardH, "TODAY'S P/L",     Money(g_dailyPL, sym, true),
+            g_dailyPL >= 0 ? COL_GREEN : COL_RED, g_dailyPL >= 0 ? COL_GREEN : COL_RED);
+   DrawCard("eq",  hx,  r1, cardW, cardH, "EQUITY",          sym + Money(eq, "", false), COL_WHITE, COL_BLUE);
+   DrawCard("fl",  c2x, r1, cardW, cardH, "FLOATING P/L",    Money(g_floating, sym, true),
+            g_floating >= 0 ? COL_GREEN : COL_RED, g_floating >= 0 ? COL_GREEN : COL_RED);
+   DrawCard("tgt", hx,  r2, cardW, cardH, "DAILY TARGET",
+            InpDailyProfitTarget > 0 ? sym + Money(InpDailyProfitTarget, "", false) : "OFF",
+            InpDailyProfitTarget > 0 ? COL_WHITE : COL_MUTE, InpDailyProfitTarget > 0 ? COL_GREEN : COL_CARDBORDER);
+   DrawCard("cap", c2x, r2, cardW, cardH, "DAILY LOSS CAP",
+            InpDailyLossLimit > 0 ? sym + Money(InpDailyLossLimit, "", false) : "OFF",
+            InpDailyLossLimit > 0 ? COL_WHITE : COL_MUTE, InpDailyLossLimit > 0 ? COL_RED : COL_CARDBORDER);
 
-   // status strip
-   color sc; string st;
-   if(g_dailyLatched)      { sc = (g_dailyReason=="DAILY TARGET") ? COL_GREEN : COL_RED; st = (g_dailyReason=="DAILY TARGET") ? "DAILY TARGET HIT - DONE" : "BLOCKED - DAILY LOSS LIMIT"; }
-   else if(g_newsActive)   { sc = COL_RED;   st = "STOP TRADING - NEWS"; }
-   else                    { sc = COL_GREEN; st = "TRADING ALLOWED"; }
-   const int stripY = y + 8;
-   SetRect("strip", X + 10, stripY, W - 20, 28, sc, sc);
-   SetText("stript", X + W/2, stripY + 6, st, clrWhite, 10, "Segoe UI Semibold", ANCHOR_UPPER);
+   // --- status row ---
+   color sc; string stt;
+   if(g_dailyLatched)
+   { bool tgt = (g_dailyReason == "DAILY TARGET"); sc = tgt ? COL_GREEN : COL_RED; stt = tgt ? "DAILY TARGET HIT" : "DAILY LOSS LIMIT HIT"; }
+   else if(g_newsActive)
+   { sc = COL_RED;   stt = "STOP TRADING - NEWS"; }
+   else
+   { sc = COL_GREEN; stt = "TRADING ALLOWED"; }
+   SetRect("stbg", X + pad, yStat, W - 2 * pad, statH, COL_CARD, COL_CARDBORDER);
+   SetRect("stac", X + pad, yStat, 3, statH, sc, sc);
+   SetRect("stdot", X + pad + 16, yStat + statH / 2 - 5, 10, 10, sc, sc);
+   SetText("stl",  X + pad + 36, yStat + 9,  "STATUS", COL_MUTE, 8);
+   SetText("stt",  X + pad + 36, yStat + 23, stt, sc, 12, "Segoe UI Semibold");
 
-   // news rows: during a window show the event + "resume in"; otherwise the
-   // next event + "stop in" (the countdown to the 30-min-before mark).
-   int ny = stripY + 38;
-   if(g_newsActive)
+   // --- alert / info box ---
+   color ac; string at, ad;
+   if(g_dailyLatched)
    {
-      Row("nx", lx, rx, ny, "News now", Clip(g_newsName, 26), COL_AMBER, 9);                 ny += 22;
-      Row("in", lx, rx, ny, "Resume in", CountStr(g_newsEnd), COL_AMBER, 10);                ny += 24;
+      bool tgt = (g_dailyReason == "DAILY TARGET");
+      ac = tgt ? COL_GREEN : COL_RED;
+      at = tgt ? "Daily target reached" : "Daily loss limit reached";
+      ad = "New trades blocked until server midnight.";
+   }
+   else if(g_newsActive)
+   {
+      ac = COL_RED;
+      at = "News: " + Clip(g_newsName, 22);
+      ad = "Resume " + TimeToString(g_newsEnd, TIME_MINUTES) + "  (in " + CountStr(g_newsEnd) + ")";
+   }
+   else if(g_nextTime > 0)
+   {
+      const datetime stopAt = g_nextTime - InpMinutesBefore * 60;
+      const long secs = (long)(stopAt - TimeTradeServer());
+      ac = (secs > 0 && secs <= 3600) ? COL_AMBER : COL_GREEN;
+      at = "Next: " + Clip(g_nextName, 22);
+      ad = "Stop " + TimeToString(stopAt, TIME_MINUTES) + "  (in " + CountStr(stopAt) + ")";
    }
    else
    {
-      string nextName = (g_nextName == "") ? "(none loaded)" : Clip(g_nextName, 26);
-      string stopIn   = (g_nextTime > 0) ? CountStr(g_nextTime - InpMinutesBefore * 60) : "-";
-      Row("nx", lx, rx, ny, "Next high-impact", nextName, COL_TEXT, 9);                      ny += 22;
-      Row("in", lx, rx, ny, "Stop in", stopIn, COL_TEXT, 10);                                ny += 24;
+      ac = COL_GREEN;
+      at = "All clear";
+      ad = InpNewsFilter ? "No high-impact news loaded." : "News monitoring is off.";
    }
+   const color abg = (ac == COL_RED) ? C'40,24,28' : ((ac == COL_AMBER) ? C'40,34,22' : C'20,32,29');
+   SetRect("albg", X + pad, yAl, W - 2 * pad, alH, abg, COL_CARDBORDER);
+   SetRect("alac", X + pad, yAl, 3, alH, ac, ac);
+   SetText("alt",  X + pad + 14, yAl + 9,  at, ac, 11, "Segoe UI Semibold");
+   SetText("ald",  X + pad + 14, yAl + 30, Clip(ad, 40), COL_MUTE, 8);
 
-   // footer
-   string src  = (InpNewsSource == NEWS_FOREX_FACTORY) ? "ForexFactory" : "MT5 Calendar";
-   string foot = StringFormat("TP %s pips  |  %s  |  %d events", DoubleToString(InpTakeProfitPips,0), src, g_newsLoaded);
-   if(InpNewsSource == NEWS_FOREX_FACTORY && g_ffError)
-      foot = "! Forex Factory feed blocked - whitelist the URL";
-   SetText("foot", lx, ny, foot, (g_ffError ? COL_AMBER : COL_MUTE), 8);
+   // --- footer ---
+   string src = (InpNewsSource == NEWS_FOREX_FACTORY) ? "Forex Factory" : "MT5 Calendar";
+   if(InpNewsSource == NEWS_FOREX_FACTORY && g_ffError) src = "FF BLOCKED-whitelist";
+   SetText("ftl", hx, yFoot, "AutoTP v2  |  TP " + DoubleToString(InpTakeProfitPips, 0) + " pips", COL_MUTE, 8);
+   SetText("ftr", X + W - pad, yFoot, src + "  |  " + (string)g_newsLoaded + " evt",
+           g_ffError ? COL_RED : COL_MUTE, 8, "Segoe UI", ANCHOR_RIGHT_UPPER);
 
    ChartRedraw();
 }
