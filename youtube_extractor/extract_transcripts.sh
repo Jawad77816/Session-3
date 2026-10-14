@@ -19,20 +19,21 @@ set -uo pipefail
 PLAYLIST="${1:-https://youtube.com/playlist?list=PL0ZWSHleEKlxopaDleMZOyj-EyOzwLcAo}"
 OUTDIR="${2:-output}"
 LANGS="${3:-ur,en}"          # Urdu primary, English translation alongside
-CLIENT="${CLIENT:-tv_embedded}"
+CLIENT="${CLIENT:-web}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
 mkdir -p "$OUTDIR"
 
 args=(
   --skip-download
+  --ignore-no-formats-error
   --write-auto-subs
   --sub-langs "$LANGS"
   --convert-subs srt
   --restrict-filenames
   --extractor-args "youtube:player_client=${CLIENT}"
   --sleep-requests 2 --sleep-subtitles 3
-  --retries 10 --retry-sleep 10 --extractor-retries 5
+  --retries 10 --retry-sleep 10 --extractor-retries 8
   --ignore-errors --no-warnings
   -o "$OUTDIR/%(playlist_index)02d_%(title).60s/captions.%(ext)s"
 )

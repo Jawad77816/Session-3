@@ -38,11 +38,13 @@ mkdir -p "$OUTDIR"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# Frames need only the video stream (no audio), so download video-only — faster
+# and smaller. A GVS PO-token provider on localhost:4416 is auto-detected by
+# yt-dlp and is required for streaming URLs from datacenter IPs.
 dl_args=(
-  -f "bestvideo[height<=${MAXH}]+bestaudio/best[height<=${MAXH}]/best"
+  -f "bestvideo[height<=${MAXH}]/best[height<=${MAXH}]/best"
   --extractor-args "youtube:player_client=${CLIENT}"
-  --merge-output-format mp4
-  --sleep-requests 2 --retries 10 --retry-sleep 10
+  --sleep-requests 2 --retries 10 --retry-sleep 10 --extractor-retries 8
   --ignore-errors --no-warnings
 )
 [ -n "${COOKIES:-}" ] && dl_args+=(--cookies "$COOKIES")
