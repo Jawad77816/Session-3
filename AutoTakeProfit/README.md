@@ -1,118 +1,157 @@
-# AutoTakeProfit — automatic 10‑pip Take Profit for manual MT5 trades
+# AutoTakeProfit v2 — Auto TP + Daily Limits + News Block + Dashboard (MT5)
 
-An MT5 Expert Advisor (EA) that watches your account and, the moment you open a
-trade **manually**, automatically sets its Take Profit a fixed number of pips
-from your entry price.
+An MT5 Expert Advisor (EA) for **manual traders** (built with Exness / XAUUSD in
+mind). It does four jobs:
 
-**Default behaviour on Gold / XAUUSD:**
-
-| You do this manually | The EA instantly sets |
-|----------------------|-----------------------|
-| **Buy** at `4000.00`  | TP = `4001.00` (+10 pips) |
-| **Sell** at `4000.00` | TP = `3999.00` (−10 pips) |
-
-> ⚠️ **Reality check first:** MetaTrader 5 has **no built‑in setting** that adds
-> a TP to manual trades. A small EA (this one) or a third‑party trade‑manager
-> tool is the only way. This EA is the clean, free way to do it, and it works
-> on Exness MT5.
+1. **Auto Take Profit** — the instant you open a trade by hand, a TP is placed a
+   fixed number of pips from your entry (default **10 pips** → Buy 4000 → TP 4001).
+2. **Daily limits** — set a **daily profit target** and/or **daily loss limit**
+   (in account money). When either is reached, no new trades for the rest of the
+   day. Set **both to 0 → no limit that day.**
+3. **High-impact news block** — no new trades **30 min before and 30 min after**
+   high-impact news (NFP, CPI, PCE, FOMC, GDP, etc.). Trades opened *before* the
+   window keep running.
+4. **Dashboard** — a clean on-chart panel: balance, equity, floating P/L, daily
+   P/L vs your limits, trading status, and the next high-impact news.
 
 ---
 
-## 1. Install it (one time)
+## ⚠️ One important truth about "blocking" trades
 
-1. Open **MetaTrader 5**.
-2. Menu **File → Open Data Folder**.
-3. Go into `MQL5` → `Experts`.
-4. Copy **`AutoTakeProfit.mq5`** into that `Experts` folder.
-5. Back in MT5, open **MetaEditor** (the toolbar icon, or press `F4`), find
-   `AutoTakeProfit.mq5` in the Navigator on the left, and click **Compile**
-   (or press `F7`). You should see *0 errors, 0 warnings*.
-   (You can also just restart MT5 and it will compile on its own.)
+An EA **cannot stop MetaTrader's manual Buy/Sell window from executing** — no EA
+can intercept a human click before it fills. So the EA enforces a block the only
+way possible: **it closes the trade instantly (within ~1 second) after it opens**
+inside a blocked window, and alerts you. Pending orders placed during a block are
+deleted the same way.
 
-## 2. Turn it on
-
-1. In MT5, allow automated trading: **Tools → Options → Expert Advisors →
-   ✅ Allow algorithmic trading**, and make sure the **“Algo Trading”** button
-   in the top toolbar is green/pressed.
-2. In the **Navigator** panel, expand **Expert Advisors**, and **drag
-   `AutoTakeProfit` onto the chart** of the symbol you trade (e.g. XAUUSD).
-3. In the settings window that pops up, tick **Allow Algo Trading**, set your
-   pips if you want to change them, and click **OK**.
-4. You’ll see a **smiley face 🙂 in the top‑right of the chart** = the EA is
-   running.
-
-That’s it. Now place a manual trade as usual — the TP appears by itself within
-a second.
-
-> The EA only needs to be on **one** chart per symbol you want managed. If you
-> trade several symbols, either put it on each chart, or set **Symbols scope =
-> ALL open symbols** (see settings) and leave it on one chart.
-
-## 3. Verify it’s doing the right thing
-
-Open the **Toolbox → Experts** tab at the bottom of MT5. On startup the EA
-prints something like:
-
-```
-AutoTakeProfit started on XAUUSD | 1 pip = 0.10 | TP = 10.0 pips = 1.00 in price
-Example: a BUY at 4000.00 would get TP at 4001.00 (a SELL would get TP at 3999.00)
-```
-
-If that example matches what you expect (Buy 4000 → TP 4001), you’re done. If
-the numbers look off for your symbol, adjust **Points per pip** (below).
+That means a blocked trade may exist for a second or two before it's flattened.
+Trades you opened **before** the block began are left alone, exactly as you asked.
 
 ---
 
-## Settings explained
+## Install (one time)
 
-| Setting | Default | What it does |
-|--------|---------|--------------|
-| **Take Profit in pips** | `10` | How far the TP sits from your entry. `0` = don’t set a TP. |
-| **Stop Loss in pips** | `0` | Optionally auto‑set a SL too. `0` = leave SL alone. |
-| **Points per pip** | `0` (auto) | Advanced. `0` lets the EA figure out one pip for you (see note). Set a number to force it. |
-| **Manage Buy positions** | `true` | Apply to buys. |
-| **Manage Sell positions** | `true` | Apply to sells. |
-| **Only manage this magic number** | `-1` | `-1` = all trades **including your manual ones**. Manual trades have magic `0`. Leave at `-1`. |
-| **Symbols scope** | `0` | `0` = only the chart the EA is on. `1` = every symbol you have open. |
-| **Only add a TP when the position has none** | `true` | Recommended. The EA sets your TP once and then never touches it again, so you can still move or remove the TP yourself afterwards. |
-| **Verbose** | `true` | Log every action to the Experts tab. |
+1. MT5 → **File → Open Data Folder → MQL5 → Experts**.
+2. Copy **`AutoTakeProfit.mq5`** into that `Experts` folder.
+3. Open **MetaEditor (F4)**, select the file, click **Compile (F7)** → *0 errors*.
+4. In MT5 enable **Algo Trading** (green button on the toolbar) and
+   **Tools → Options → Expert Advisors → ✅ Allow algorithmic trading**.
+5. Drag the **AutoTakeProfit** EA from the Navigator onto **one** XAUUSD chart,
+   tick **Allow Algo Trading**, set your options, click OK. A 🙂 appears = running.
 
-### About “pips” on Gold (important)
-
-The word *pip* is ambiguous on gold, so here’s exactly what this EA assumes by
-default, and how to change it:
-
-- By default (**Points per pip = 0**) the EA treats **1 pip = `0.10` in price**
-  for gold/silver, so **10 pips = `1.00`** → Buy 4000 → TP 4001. This matches
-  what you asked for.
-- If your broker quotes gold differently, or you want a different amount, set
-  **Points per pip** manually. One pip = `Points per pip × point`. Examples for
-  XAUUSD quoted with 2 decimals (`point = 0.01`):
-  - `Points per pip = 10` → 1 pip = `0.10` → 10 pips = **`1.00`** (default result)
-  - `Points per pip = 100` → 1 pip = `1.00` → 10 pips = `10.00`
-  - `Points per pip = 1` → 1 pip = `0.01` → 10 pips = `0.10`
-
-Whatever you choose, the startup log line (`1 pip = …`) tells you the exact
-price distance, so you can always confirm before trading.
+> Run **one instance only**. The daily-limit and news logic are account-wide; the
+> dashboard and news list live on the chart you attach it to.
 
 ---
 
-## Good to know / limitations
+## Settings
 
-- **Set‑and‑forget your TP:** with *Only add a TP when the position has none =
-  true*, the EA sets the TP once. If you later drag the TP line or delete it,
-  the EA won’t re‑add it. Turn that setting **off** if you instead want it to
-  always force the TP back to your entry ± the set pips.
-- **The EA must be running** (smiley on the chart, Algo Trading green) at the
-  moment you place the trade. If MT5 is closed, or the EA isn’t on a chart, no
-  TP is added. It will, however, set the TP the next time it runs if the trade
-  is still open with no TP.
-- **Price already ran past the TP / broker minimum distance:** if your 10‑pip
-  TP would be too close to the current market price (broker “stops level”), the
-  EA logs a note and skips it — set that one manually. On most Exness accounts
-  the stops level is 0, so this is rare.
-- **It manages positions, not pending orders.** A pending order (Buy Limit,
-  etc.) gets its TP when it triggers and becomes a live position.
-- **Works on netting and hedging accounts** (Exness MT5 is hedging by default).
-- This is a trading tool: **test it on a demo account first.** Nothing here is
-  financial advice.
+### Take Profit / Stop Loss
+| Setting | Default | Meaning |
+|---|---|---|
+| Take Profit in pips | `10` | TP distance from entry. `0` = no TP. |
+| Stop Loss in pips | `0` | Optional auto SL. `0` = leave SL alone. |
+| Points per pip | `0` (auto) | Advanced pip sizing. See "Pips on gold" below. |
+| Manage Buy / Sell | `true` | Which sides to auto-TP. |
+| Only if no TP | `true` | Set TP once; don't fight your manual edits afterwards. |
+
+### Daily limits (account currency; 0 & 0 = no limit)
+| Setting | Default | Meaning |
+|---|---|---|
+| Daily profit target | `0` | Stop trading after **+this** profit today. `0` = off. |
+| Daily loss limit | `0` | Stop trading after **−this** loss today. `0` = off. |
+| Close all on limit | `false` | If on, also **close open trades** when a limit hits (hard stop). If off, open trades keep running and only *new* trades are blocked. |
+
+- "Daily P/L" = closed profit since **broker-server midnight** + current floating
+  P/L. Once a limit is hit it **stays blocked for the rest of the day** (even if
+  price recovers). It resets at the next server midnight.
+
+### High-impact news block
+| Setting | Default | Meaning |
+|---|---|---|
+| Block new trades around news | `true` | Master on/off for news blocking. |
+| Minutes before | `30` | Block window start before each event. |
+| Minutes after | `30` | Block window end after each event. |
+| News data source | `MT5 Calendar` | `MT5 Calendar` (recommended) or `Forex Factory`. |
+| Currencies to watch | `USD` | Comma list (e.g. `USD,EUR`) or `ALL`. For gold, `USD` is what moves it. |
+| Refresh every N min | `15` | How often to rebuild the MT5-calendar list. |
+
+### Forex Factory (only used if source = Forex Factory)
+| Setting | Default | Meaning |
+|---|---|---|
+| FF GMT offset (hours) | `0` | **The timezone of the feed's times — you must verify this.** See below. |
+| FF refresh min | `60` | Re-download the feed every N minutes (min 5; FF rate-limits). |
+
+### Dashboard / Misc
+Show dashboard, X/Y position, verbose log, alerts on/off, magic filter
+(`-1` = all incl. manual), symbol scope (`0` = this chart, `1` = all symbols).
+
+---
+
+## Which news source should I use?
+
+**MT5 Calendar (default, recommended).** MetaTrader's own economic calendar is
+provided by your broker, updates automatically, needs **no setup**, and its event
+times are already in your **broker-server time** — so the 30-min windows are
+correct with no timezone guessing. It tags each event's importance, and this EA
+blocks only **High** importance events for your watched currencies. This covers
+NFP, CPI, Core CPI, PCE/Core PCE, PPI, FOMC rate decision, FOMC minutes, Fed Chair
+(Powell) speeches, GDP, Retail Sales, ISM Manufacturing/Services PMI, ADP,
+JOLTS, Unemployment Claims, Consumer Confidence and more — whatever the calendar
+marks High.
+
+**Forex Factory (optional — you asked for it).** The EA can instead pull the
+weekly feed at `https://nfs.faireconomy.media/ff_calendar_thisweek.xml` and block
+events whose impact is **High**. Two things are required to make it work:
+
+1. **Whitelist the URL:** MT5 → Tools → Options → Expert Advisors →
+   ✅ *Allow WebRequest for listed URL* → add
+   `https://nfs.faireconomy.media`. Without this the feed is blocked and the
+   dashboard shows **"! Forex Factory feed blocked — whitelist the URL"**.
+2. **Set the timezone:** the feed does **not** state its timezone, so you must set
+   **FF GMT offset (hours)** to match it and **verify against the forexfactory.com
+   calendar**. If the dashboard's "Next high-impact" time is off by a few hours
+   vs the website, adjust the offset until it matches. (This timezone ambiguity is
+   exactly why MT5 Calendar is the safer default.)
+
+Either way the dashboard shows the active source and how many events it loaded, so
+you can see at a glance that news data is live.
+
+> Geopolitical shocks (wars, surprise crises, emergency statements) have **no
+> scheduled time**, so no calendar — FF or MT5 — can pre-block them. Those remain
+> your judgement call.
+
+---
+
+## About "pips" on gold
+
+The word *pip* is ambiguous on gold, so the EA is explicit. By default
+(**Points per pip = 0**) it treats **1 pip = 0.10** on gold → **10 pips = 1.00** →
+Buy 4000 → TP 4001, which is what you asked for. If your broker quotes gold
+differently or you want another distance, set **Points per pip** (1 pip =
+`Points per pip × point`). The log line on startup prints the exact pip size and a
+worked example so you can confirm before trading.
+
+---
+
+## Reading the dashboard
+
+- **Balance / Equity** — account figures.
+- **Floating P/L** — profit/loss of currently open trades (green up / red down).
+- **DAILY P/L** — your net result today vs the **Daily target** and **Daily loss cap**.
+- **Status strip** — `TRADING ALLOWED` (green), `BLOCKED – NEWS WINDOW` (amber),
+  or `BLOCKED – DAILY TARGET / DAILY LOSS LIMIT` (green/red).
+- **Next high-impact** — the next watched event and a countdown ("Starts in").
+- **Footer** — TP size, active news source, and events loaded.
+
+---
+
+## Good to know / limits
+
+- The EA must be **running** (🙂 on the chart, Algo Trading green) when you trade.
+- Blocking works by **instant close** — see the warning at the top.
+- Daily P/L resets at **broker-server midnight** (not your local midnight).
+- **Strategy Tester:** auto-TP and daily limits work, but the MT5 calendar and
+  Forex Factory WebRequest are **not available in the tester**, so news blocking
+  can't be backtested there — test it on a **demo account** on a live chart.
+- This is a trading tool, not financial advice. **Test on demo first.**
