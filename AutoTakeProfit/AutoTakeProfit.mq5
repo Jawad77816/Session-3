@@ -67,9 +67,11 @@ input double InpFF_GmtOffsetHours = 0.0;   // GMT offset of Forex Factory times 
 input int    InpFF_RefreshMin     = 60;    // Re-download the FF feed every N minutes (min 5)
 
 input group "========== DASHBOARD =========="
-input bool InpShowDashboard = true;        // Show the on-chart dashboard
-input int  InpDashX         = 14;          // Dashboard X (pixels from left)
-input int  InpDashY         = 26;          // Dashboard Y (pixels from top)
+input bool   InpShowDashboard = true;      // Show the on-chart dashboard
+input int    InpDashX         = 14;        // Dashboard X (pixels from left)
+input int    InpDashY         = 26;        // Dashboard Y (pixels from top)
+input double InpUiScale        = 0;        // Panel scale (0 = auto-fit to screen DPI; else e.g. 1.5, 2.0)
+input int    InpFontAdjust     = 0;        // Add/subtract to ALL dashboard fonts (e.g. -2 to shrink text)
 
 input group "========== MISC =========="
 input bool InpVerbose     = true;    // Print actions to the Experts log
@@ -83,6 +85,7 @@ input int  InpSymbolScope = 0;       // Positions to manage: 0 = this chart only
 //==================================================================
 CTrade   trade;
 ulong    g_failed[];          // tickets we already failed to MODIFY (avoid log spam)
+double   g_ui = 1.0;          // dashboard pixel scale (so geometry matches DPI-scaled fonts)
 
 // news events (times stored in SERVER time)
 datetime g_evTime[];
@@ -133,6 +136,20 @@ int OnInit()
 {
    trade.SetAsyncMode(false);
    trade.LogLevel(LOG_LEVEL_ERRORS);
+
+   // Dashboard scale: MT5 label fonts grow with screen DPI, so scale the panel's
+   // pixel geometry by the same factor, keeping text and boxes in proportion.
+   if(InpUiScale > 0.0)
+      g_ui = InpUiScale;
+   else
+   {
+      int dpi = (int)TerminalInfoInteger(TERMINAL_SCREEN_DPI);
+      if(dpi <= 0) dpi = 96;
+      g_ui = (double)dpi / 96.0;
+   }
+   if(g_ui < 1.0) g_ui = 1.0;
+   PrintFormat("AutoTakeProfit: dashboard scale x%.2f (screen DPI %d). Override with InpUiScale if text still overlaps.",
+               g_ui, (int)TerminalInfoInteger(TERMINAL_SCREEN_DPI));
 
    EventSetTimer(1);   // drives news refresh + evaluation even without ticks
 
@@ -760,6 +777,9 @@ string MoneyStr(const double v)
 //==================================================================
 //  DASHBOARD
 //==================================================================
+// scale a design pixel value by the DPI/UI factor
+int SX(const int v) { return (int)MathRound(v * g_ui); }
+
 void SetRect(const string key, const int x, const int y, const int w, const int h,
              const color bg, const color border)
 {
@@ -772,10 +792,10 @@ void SetRect(const string key, const int x, const int y, const int w, const int 
       ObjectSetInteger(0, nm, OBJPROP_HIDDEN, true);
       ObjectSetInteger(0, nm, OBJPROP_BACK, false);
    }
-   ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, x);
-   ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, y);
-   ObjectSetInteger(0, nm, OBJPROP_XSIZE, w);
-   ObjectSetInteger(0, nm, OBJPROP_YSIZE, h);
+   ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, SX(x));
+   ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, SX(y));
+   ObjectSetInteger(0, nm, OBJPROP_XSIZE, SX(w));
+   ObjectSetInteger(0, nm, OBJPROP_YSIZE, SX(h));
    ObjectSetInteger(0, nm, OBJPROP_BGCOLOR, bg);
    ObjectSetInteger(0, nm, OBJPROP_BORDER_TYPE, BORDER_FLAT);
    ObjectSetInteger(0, nm, OBJPROP_COLOR, border);
@@ -795,11 +815,13 @@ void SetText(const string key, const int x, const int y, const string text,
       ObjectSetInteger(0, nm, OBJPROP_HIDDEN, true);
       ObjectSetInteger(0, nm, OBJPROP_BACK, false);
    }
-   ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, x);
-   ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, y);
+   int fsz = size + InpFontAdjust;
+   if(fsz < 5) fsz = 5;
+   ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, SX(x));
+   ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, SX(y));
    ObjectSetInteger(0, nm, OBJPROP_ANCHOR, anc);
    ObjectSetInteger(0, nm, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, nm, OBJPROP_FONTSIZE, size);
+   ObjectSetInteger(0, nm, OBJPROP_FONTSIZE, fsz);
    ObjectSetString(0, nm, OBJPROP_FONT, font);
    ObjectSetString(0, nm, OBJPROP_TEXT, text);
 }

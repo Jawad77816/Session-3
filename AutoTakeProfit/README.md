@@ -163,9 +163,13 @@ The dashboard is a dark **card panel** (see `dashboard_preview.html` for a mock-
   (the countdown to the 30-min-before STOP moment).
 - **Footer** — TP size, active news source, and events loaded.
 
-> The panel uses a fixed width with each value on its own card line, so text can't
-> overlap even when Windows display scaling enlarges the fonts. If the panel ever
-> sits awkwardly, move it with the **Dashboard X / Y** inputs.
+> **If the text ever looks too big / overlapping:** MT5 fonts grow with your
+> Windows display-scaling (DPI). The EA auto-detects this and scales the whole
+> panel to match (it prints the detected scale to the Experts log on start). If
+> auto-detect is off, set **Panel scale** (`InpUiScale`) to match your Windows
+> scaling — `1.5` for 150%, `2.0` for 200% — or nudge **Font adjust**
+> (`InpFontAdjust`, e.g. `-2`) to shrink the text. Move the panel with
+> **Dashboard X / Y**.
 
 ---
 
