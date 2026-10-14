@@ -28,12 +28,22 @@ spoken in Urdu/Hindi) but works on any playlist.
 
 ## ⚠️ Important: YouTube blocks cloud / datacenter IPs
 
-From a normal home/office (residential) connection these scripts just work.
+From a normal home/office (**residential**) connection these scripts just work.
 From a **cloud server, CI runner, or datacenter IP** (including Claude's cloud
-sandbox) YouTube refuses content with *"Sign in to confirm you're not a bot"*
-and `HTTP 429` (captions) / `HTTP 403` (media). Only metadata queries succeed.
+sandbox) YouTube is far more hostile. Observed behaviour, and what gets past it:
 
-To run from such an environment you must supply **cookies** from a logged-in
+| From a datacenter IP | No cookies | With cookies |
+|----------------------|------------|--------------|
+| Metadata / caption listing | ✅ works | ✅ works |
+| **Caption text** (transcripts) | ❌ `LOGIN_REQUIRED` / `429` | ✅ works, but **rate-limited** (~16 fetches/window → the script paces + retries in cooldown sweeps) |
+| **Video download** (needed for frames) | ❌ `403` on CDN | ❌ still blocked (web client returns *no* formats; other clients `403`) |
+
+**Takeaway:** with cookies you can pull **transcripts** from a datacenter IP
+(slowly). **Frames need a residential IP** — run `extract_frames.sh` on your
+own machine. A PO-token provider (bgutil) helps but does not lift the video
+block once the IP is flagged.
+
+To run from a datacenter IP you must supply **cookies** from a logged-in
 YouTube session:
 
 1. In a browser logged in to YouTube, install a "Get cookies.txt LOCALLY"
