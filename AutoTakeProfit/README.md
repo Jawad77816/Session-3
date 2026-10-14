@@ -1,4 +1,4 @@
-# AutoTakeProfit v2 — Auto TP + Daily Limits + News Block + Dashboard (MT5)
+# AutoTakeProfit v2 — Auto TP + Daily Limits + News Alerts + Dashboard (MT5)
 
 An MT5 Expert Advisor (EA) for **manual traders** (built with Exness / XAUUSD in
 mind). It does four jobs:
@@ -8,24 +8,34 @@ mind). It does four jobs:
 2. **Daily limits** — set a **daily profit target** and/or **daily loss limit**
    (in account money). When either is reached, no new trades for the rest of the
    day. Set **both to 0 → no limit that day.**
-3. **High-impact news block** — no new trades **30 min before and 30 min after**
-   high-impact news (NFP, CPI, PCE, FOMC, GDP, etc.). Trades opened *before* the
-   window keep running.
+3. **High-impact news alerts** — a **"STOP TRADING"** alert **30 min before**
+   high-impact news (NFP, CPI, PCE, FOMC, GDP, etc.) and a **"RESUME TRADING"**
+   alert once the window clears (30 min after). The dashboard shows a live
+   countdown. Optionally it can also force-close trades opened in the window.
 4. **Dashboard** — a clean on-chart panel: balance, equity, floating P/L, daily
-   P/L vs your limits, trading status, and the next high-impact news.
+   P/L vs your limits, trading status, and a STOP / RESUME news countdown.
 
 ---
 
-## ⚠️ One important truth about "blocking" trades
+## ⚠️ How news "blocking" works
 
 An EA **cannot stop MetaTrader's manual Buy/Sell window from executing** — no EA
-can intercept a human click before it fills. So the EA enforces a block the only
-way possible: **it closes the trade instantly (within ~1 second) after it opens**
-inside a blocked window, and alerts you. Pending orders placed during a block are
-deleted the same way.
+can intercept a human click before it fills. So for news the EA works as a
+**discipline alarm, not a lock**:
 
-That means a blocked trade may exist for a second or two before it's flattened.
-Trades you opened **before** the block began are left alone, exactly as you asked.
+- **30 minutes before** a high-impact event it pops a **"STOP TRADING"** alert
+  (terminal popup + optional mobile push) and the dashboard turns red.
+- **30 minutes after** the event it pops a **"RESUME TRADING"** alert and the
+  dashboard turns green again.
+- You decide not to click Buy/Sell during that window.
+
+If you want a hard version too, turn on **News auto-close**: then any trade you
+*do* open inside the window is closed within ~1 second (and pending orders
+deleted). Trades opened **before** the window are always left running. Auto-close
+is **off by default** — the default is alerts only.
+
+*(The daily loss/target limit is separate and still a real block — it closes new
+trades and, optionally, all open trades when hit.)*
 
 ---
 
@@ -66,12 +76,14 @@ Trades you opened **before** the block began are left alone, exactly as you aske
   P/L. Once a limit is hit it **stays blocked for the rest of the day** (even if
   price recovers). It resets at the next server midnight.
 
-### High-impact news block
+### High-impact news
 | Setting | Default | Meaning |
 |---|---|---|
-| Block new trades around news | `true` | Master on/off for news blocking. |
-| Minutes before | `30` | Block window start before each event. |
-| Minutes after | `30` | Block window end after each event. |
+| Enable news monitoring | `true` | Master on/off for the whole news feature. |
+| Minutes before | `30` | Window starts this long before each event (the "STOP" moment). |
+| Minutes after | `30` | Window ends this long after each event (the "RESUME" moment). |
+| News alerts | `true` | Pop the STOP / RESUME alerts at the window edges. |
+| News auto-close | `false` | Also force-close trades opened inside the window (hard block). |
 | News data source | `MT5 Calendar` | `MT5 Calendar` (recommended) or `Forex Factory`. |
 | Currencies to watch | `USD` | Comma list (e.g. `USD,EUR`) or `ALL`. For gold, `USD` is what moves it. |
 | Refresh every N min | `15` | How often to rebuild the MT5-calendar list. |
@@ -83,8 +95,10 @@ Trades you opened **before** the block began are left alone, exactly as you aske
 | FF refresh min | `60` | Re-download the feed every N minutes (min 5; FF rate-limits). |
 
 ### Dashboard / Misc
-Show dashboard, X/Y position, verbose log, alerts on/off, magic filter
-(`-1` = all incl. manual), symbol scope (`0` = this chart, `1` = all symbols).
+Show dashboard, X/Y position, verbose log, terminal alerts on/off, **push to the
+MT5 mobile app** (`InpPushNotify`, needs your MetaQuotes ID in Tools → Options →
+Notifications), magic filter (`-1` = all incl. manual), symbol scope (`0` = this
+chart, `1` = all symbols).
 
 ---
 
@@ -94,14 +108,14 @@ Show dashboard, X/Y position, verbose log, alerts on/off, magic filter
 provided by your broker, updates automatically, needs **no setup**, and its event
 times are already in your **broker-server time** — so the 30-min windows are
 correct with no timezone guessing. It tags each event's importance, and this EA
-blocks only **High** importance events for your watched currencies. This covers
+watches only **High** importance events for your watched currencies. This covers
 NFP, CPI, Core CPI, PCE/Core PCE, PPI, FOMC rate decision, FOMC minutes, Fed Chair
 (Powell) speeches, GDP, Retail Sales, ISM Manufacturing/Services PMI, ADP,
 JOLTS, Unemployment Claims, Consumer Confidence and more — whatever the calendar
 marks High.
 
 **Forex Factory (optional — you asked for it).** The EA can instead pull the
-weekly feed at `https://nfs.faireconomy.media/ff_calendar_thisweek.xml` and block
+weekly feed at `https://nfs.faireconomy.media/ff_calendar_thisweek.xml` and watch
 events whose impact is **High**. Two things are required to make it work:
 
 1. **Whitelist the URL:** MT5 → Tools → Options → Expert Advisors →
@@ -139,17 +153,22 @@ worked example so you can confirm before trading.
 - **Balance / Equity** — account figures.
 - **Floating P/L** — profit/loss of currently open trades (green up / red down).
 - **DAILY P/L** — your net result today vs the **Daily target** and **Daily loss cap**.
-- **Status strip** — `TRADING ALLOWED` (green), `BLOCKED – NEWS WINDOW` (amber),
-  or `BLOCKED – DAILY TARGET / DAILY LOSS LIMIT` (green/red).
-- **Next high-impact** — the next watched event and a countdown ("Starts in").
+- **Status strip** — `TRADING ALLOWED` (green), `STOP TRADING - NEWS` (red during
+  the window), `DAILY TARGET HIT - DONE` (green), or `BLOCKED - DAILY LOSS LIMIT`
+  (red).
+- **News row** — when clear: the next event + **"Stop in"** (countdown to the
+  30-min-before STOP moment). During a window: the event name + **"Resume in"**
+  (countdown to when it's safe to trade again).
 - **Footer** — TP size, active news source, and events loaded.
 
 ---
 
 ## Good to know / limits
 
-- The EA must be **running** (🙂 on the chart, Algo Trading green) when you trade.
-- Blocking works by **instant close** — see the warning at the top.
+- The EA must be **running** (🙂 on the chart, Algo Trading green) to alert you.
+- News is an **alert** by default; turn on **News auto-close** for a hard block.
+- For alerts to reach your **phone**, turn on push and set your MetaQuotes ID in
+  MT5 → Tools → Options → Notifications (works on the Exness MT5 mobile app too).
 - Daily P/L resets at **broker-server midnight** (not your local midnight).
 - **Strategy Tester:** auto-TP and daily limits work, but the MT5 calendar and
   Forex Factory WebRequest are **not available in the tester**, so news blocking

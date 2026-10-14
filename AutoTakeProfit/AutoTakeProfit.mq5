@@ -52,10 +52,12 @@ input double InpDailyProfitTarget = 0.0;   // Daily profit target - stop trading
 input double InpDailyLossLimit    = 0.0;   // Daily loss limit - stop trading after -this (0 = off)
 input bool   InpCloseAllOnLimit   = false; // Also CLOSE all open trades when a daily limit is hit
 
-input group "========== HIGH-IMPACT NEWS BLOCK =========="
-input bool            InpBlockNews     = true;              // Block new trades around high-impact news
-input int             InpMinutesBefore = 30;                // Block this many minutes BEFORE news
-input int             InpMinutesAfter  = 30;                // Block this many minutes AFTER news
+input group "========== HIGH-IMPACT NEWS =========="
+input bool            InpNewsFilter    = true;              // Enable high-impact news monitoring
+input int             InpMinutesBefore = 30;                // Window starts this many minutes BEFORE news
+input int             InpMinutesAfter  = 30;                // Window ends this many minutes AFTER news
+input bool            InpNewsAlert     = true;              // Pop STOP / RESUME trading alerts at the window edges
+input bool            InpNewsAutoClose = false;             // ALSO force-close trades opened inside the window
 input ENUM_NEWS_SOURCE InpNewsSource   = NEWS_MT5_CALENDAR; // News data source
 input string          InpNewsCurrencies= "USD";             // Currencies to watch (comma list, or ALL)
 input int             InpNewsRefreshMin= 15;                // Refresh MT5-calendar list every N minutes
@@ -71,7 +73,8 @@ input int  InpDashY         = 26;          // Dashboard Y (pixels from top)
 
 input group "========== MISC =========="
 input bool InpVerbose     = true;    // Print actions to the Experts log
-input bool InpAlerts      = true;    // Pop up an alert when a trade is blocked / limit hit
+input bool InpAlerts      = true;    // Pop up terminal alerts (news / limits)
+input bool InpPushNotify  = false;   // Also send push to the MT5 mobile app (needs MetaQuotes ID)
 input long InpMagicFilter = -1;      // Only manage this magic (-1 = all, includes manual trades)
 input int  InpSymbolScope = 0;       // Positions to manage: 0 = this chart only, 1 = ALL symbols
 
@@ -90,11 +93,14 @@ bool     g_ffError      = false;
 datetime g_lastNewsFetch= 0;
 
 // news window state (recomputed each evaluation)
-bool     g_newsActive   = false;
-datetime g_newsStart    = 0;
-string   g_newsName      = "";
-datetime g_nextTime     = 0;
-string   g_nextName      = "";
+bool     g_newsActive     = false;
+datetime g_newsStart      = 0;    // earliest active window start (for auto-close cut-off)
+datetime g_newsEnd        = 0;    // latest active window end  (for the "resume in" countdown)
+datetime g_newsEventTime  = 0;    // the active event's scheduled time
+string   g_newsName       = "";
+bool     g_newsPrevActive = false; // to fire STOP / RESUME alerts only on edges
+datetime g_nextTime       = 0;
+string   g_nextName       = "";
 
 // daily P/L state
 datetime g_dayStart       = 0;
@@ -193,6 +199,7 @@ void Evaluate()
    ComputeDailyPL();
    UpdateDailyLatch();
    UpdateNewsWindow();
+   HandleNewsTransitions();
    ManagePositions();
    if(InpShowDashboard)
       UpdateDashboard();
@@ -297,11 +304,16 @@ void UpdateDailyLatch()
 //==================================================================
 void UpdateNewsWindow()
 {
-   g_newsActive = false;
-   g_newsStart  = 0;
-   g_newsName    = "";
-   g_nextTime   = 0;
-   g_nextName    = "";
+   g_newsActive    = false;
+   g_newsStart     = 0;
+   g_newsEnd       = 0;
+   g_newsEventTime = 0;
+   g_newsName      = "";
+   g_nextTime      = 0;
+   g_nextName      = "";
+
+   if(!InpNewsFilter)
+      return;
 
    const datetime now = TimeTradeServer();
    const int n = ArraySize(g_evTime);
@@ -310,14 +322,17 @@ void UpdateNewsWindow()
       const datetime ws = g_evTime[i] - InpMinutesBefore * 60;
       const datetime we = g_evTime[i] + InpMinutesAfter  * 60;
 
-      if(InpBlockNews && now >= ws && now <= we)
+      if(now >= ws && now <= we)          // we are inside this event's window
       {
+         // name/start come from the event with the earliest window start
          if(!g_newsActive || ws < g_newsStart)
          {
-            g_newsActive = true;
-            g_newsStart  = ws;
-            g_newsName    = g_evName[i];
+            g_newsStart     = ws;
+            g_newsEventTime = g_evTime[i];
+            g_newsName      = g_evName[i];
          }
+         if(we > g_newsEnd) g_newsEnd = we;   // resume only when ALL windows clear
+         g_newsActive = true;
       }
 
       if(g_evTime[i] >= now && (g_nextTime == 0 || g_evTime[i] < g_nextTime))
@@ -328,9 +343,28 @@ void UpdateNewsWindow()
    }
 }
 
+// Fire one-off "STOP" / "RESUME" alerts as we cross the window edges.
+void HandleNewsTransitions()
+{
+   if(InpNewsFilter && InpNewsAlert)
+   {
+      if(g_newsActive && !g_newsPrevActive)
+         Notify(StringFormat("STOP TRADING - high-impact news '%s' at %s. Resume at %s.",
+                             g_newsName,
+                             TimeToString(g_newsEventTime, TIME_MINUTES),
+                             TimeToString(g_newsEnd, TIME_MINUTES)));
+      else if(!g_newsActive && g_newsPrevActive)
+         Notify("RESUME TRADING - the high-impact news window has passed.");
+   }
+   g_newsPrevActive = g_newsActive;
+}
+
+// Pending orders / new trades are force-closed only when a real block is on:
+//   - a daily limit has latched, or
+//   - we are in a news window AND the user turned on news auto-close.
 bool TradingBlocked()
 {
-   return (g_newsActive || g_dailyLatched);
+   return (g_dailyLatched || (g_newsActive && InpNewsAutoClose));
 }
 
 //==================================================================
@@ -342,9 +376,9 @@ bool MagicOk(const long magic)        { return (InpMagicFilter < 0 || magic == I
 // should a position opened at posTime be force-closed by a block?
 bool ShouldClose(const datetime posTime)
 {
-   if(g_dailyLatched && InpCloseAllOnLimit)              return true;   // hard stop
-   if(g_newsActive   && posTime >= g_newsStart)          return true;   // opened inside news window
-   if(g_dailyLatched && posTime >= g_dailyBlockStart)    return true;   // opened after limit hit
+   if(g_dailyLatched && InpCloseAllOnLimit)                       return true; // hard stop
+   if(g_newsActive && InpNewsAutoClose && posTime >= g_newsStart) return true; // opened inside news window
+   if(g_dailyLatched && posTime >= g_dailyBlockStart)             return true; // opened after limit hit
    return false;
 }
 
@@ -360,7 +394,7 @@ void ManagePositions()
          if(!InScope(OrderGetString(ORDER_SYMBOL)))        continue;
          if(!MagicOk(OrderGetInteger(ORDER_MAGIC)))         continue;
          const datetime setup = (datetime)OrderGetInteger(ORDER_TIME_SETUP);
-         if((g_newsActive   && setup >= g_newsStart) ||
+         if((g_newsActive && InpNewsAutoClose && setup >= g_newsStart) ||
             (g_dailyLatched && setup >= g_dailyBlockStart) ||
             (g_dailyLatched && InpCloseAllOnLimit))
          {
@@ -709,8 +743,9 @@ bool ParseFFDateTime(string d, string t, datetime &out)
 //==================================================================
 void Notify(const string msg)
 {
-   if(InpVerbose) Print("AutoTakeProfit: ", msg);
-   if(InpAlerts)  Alert("AutoTakeProfit: ", msg);
+   if(InpVerbose)    Print("AutoTakeProfit: ", msg);
+   if(InpAlerts)     Alert("AutoTakeProfit: ", msg);
+   if(InpPushNotify) SendNotification("AutoTakeProfit: " + msg);
 }
 
 string MoneyStr(const double v)
@@ -778,6 +813,14 @@ string Clip(string s, const int n)
    return s;
 }
 
+// "Xh YYm" countdown from now until target (clamped at 0)
+string CountStr(const datetime target)
+{
+   long s = (long)(target - TimeTradeServer());
+   if(s < 0) s = 0;
+   return StringFormat("%dh %02dm", (int)(s / 3600), (int)((s % 3600) / 60));
+}
+
 void UpdateDashboard()
 {
    const int X = InpDashX, Y = InpDashY, W = 300, pad = 14, hh = 34, H = 300;
@@ -803,22 +846,28 @@ void UpdateDashboard()
 
    // status strip
    color sc; string st;
-   if(g_dailyLatched)      { sc = (g_dailyReason=="DAILY TARGET") ? COL_GREEN : COL_RED; st = "BLOCKED - " + g_dailyReason; }
-   else if(g_newsActive)   { sc = COL_AMBER; st = "BLOCKED - NEWS WINDOW"; }
+   if(g_dailyLatched)      { sc = (g_dailyReason=="DAILY TARGET") ? COL_GREEN : COL_RED; st = (g_dailyReason=="DAILY TARGET") ? "DAILY TARGET HIT - DONE" : "BLOCKED - DAILY LOSS LIMIT"; }
+   else if(g_newsActive)   { sc = COL_RED;   st = "STOP TRADING - NEWS"; }
    else                    { sc = COL_GREEN; st = "TRADING ALLOWED"; }
    const int stripY = y + 8;
    SetRect("strip", X + 10, stripY, W - 20, 28, sc, sc);
    SetText("stript", X + W/2, stripY + 6, st, clrWhite, 10, "Segoe UI Semibold", ANCHOR_UPPER);
 
-   // news rows
+   // news rows: during a window show the event + "resume in"; otherwise the
+   // next event + "stop in" (the countdown to the 30-min-before mark).
    int ny = stripY + 38;
-   string nextName = (g_nextName == "") ? "(none loaded)" : Clip(g_nextName, 26);
-   string inStr;
-   if(g_newsActive)        inStr = "ACTIVE NOW";
-   else if(g_nextTime > 0) { long s=(long)(g_nextTime-TimeTradeServer()); if(s<0)s=0; inStr=StringFormat("%dh %02dm", (int)(s/3600), (int)((s%3600)/60)); }
-   else                    inStr = "-";
-   Row("nx",  lx, rx, ny,     "Next high-impact", nextName, COL_TEXT, 9);  ny += 22;
-   Row("in",  lx, rx, ny,     "Starts in",        inStr, g_newsActive?COL_AMBER:COL_TEXT, 10); ny += 24;
+   if(g_newsActive)
+   {
+      Row("nx", lx, rx, ny, "News now", Clip(g_newsName, 26), COL_AMBER, 9);                 ny += 22;
+      Row("in", lx, rx, ny, "Resume in", CountStr(g_newsEnd), COL_AMBER, 10);                ny += 24;
+   }
+   else
+   {
+      string nextName = (g_nextName == "") ? "(none loaded)" : Clip(g_nextName, 26);
+      string stopIn   = (g_nextTime > 0) ? CountStr(g_nextTime - InpMinutesBefore * 60) : "-";
+      Row("nx", lx, rx, ny, "Next high-impact", nextName, COL_TEXT, 9);                      ny += 22;
+      Row("in", lx, rx, ny, "Stop in", stopIn, COL_TEXT, 10);                                ny += 24;
+   }
 
    // footer
    string src  = (InpNewsSource == NEWS_FOREX_FACTORY) ? "ForexFactory" : "MT5 Calendar";
