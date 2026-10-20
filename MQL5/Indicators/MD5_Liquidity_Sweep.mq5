@@ -1,63 +1,69 @@
 //+------------------------------------------------------------------+
 //|                                       MD5_Liquidity_Sweep.mq5     |
-//|                   MD5 Liquidity Sweep + Fair Value Gap (ICT/SMC)  |
+//|            MD5 Multi-Timeframe Liquidity Sweep + Fair Value Gap   |
 //|                                                                  |
 //|  NON-REPAINTING MetaTrader 5 custom indicator.                   |
 //|                                                                  |
-//|  WHAT IT MARKS                                                   |
+//|  MULTI-TIMEFRAME LIQUIDITY SWEEPS                                |
 //|  --------------------------------------------------------------  |
-//|  * Buy-side liquidity (BSL) sweep  -> price wicks ABOVE a prior   |
-//|    swing HIGH (where buy stops rest) and CLOSES back BELOW it.    |
-//|    Read as a bearish liquidity grab -> DOWN arrow above the bar.  |
-//|  * Sell-side liquidity (SSL) sweep -> price wicks BELOW a prior   |
-//|    swing LOW (where sell stops rest) and CLOSES back ABOVE it.    |
-//|    Read as a bullish liquidity grab -> UP arrow below the bar.    |
-//|  * The swept liquidity LEVEL is drawn as a line at the price the  |
-//|    sweep occurred, from the swing to the sweep bar.               |
-//|  * Fair Value Gaps (3-candle imbalance) classified REAL vs FAKE:  |
-//|      REAL  = born from displacement (large, strong-bodied middle  |
-//|              candle + meaningful gap; often right after a sweep)  |
-//|      FAKE  = small gap formed in chop / weak momentum             |
+//|  Attach it to ONE chart (e.g. M1) and it detects and labels the  |
+//|  liquidity sweeps of every enabled timeframe at once:            |
+//|  M1, M5, M15, M30, H1, H4, D1 (W1 optional).                     |
+//|                                                                  |
+//|  * Buy-side (BSL) sweep  -> price wicks ABOVE a prior swing HIGH  |
+//|    (buy stops) and CLOSES back BELOW it   -> bearish grab,        |
+//|    DOWN arrow above the bar, label "<TF> BSL".                    |
+//|  * Sell-side (SSL) sweep -> price wicks BELOW a prior swing LOW   |
+//|    (sell stops) and CLOSES back ABOVE it  -> bullish grab,        |
+//|    UP arrow below the bar, label "<TF> SSL".                      |
+//|  * The swept LEVEL is drawn as a line from the swing to the       |
+//|    sweep bar. Higher timeframes draw bigger / bolder markers.     |
+//|                                                                  |
+//|  FAIR VALUE GAPS (chart timeframe)                               |
+//|  --------------------------------------------------------------  |
+//|  3-candle imbalance classified REAL vs FAKE from displacement    |
+//|  (middle-candle range vs ATR), body dominance and gap size;       |
+//|  tagged "+sweep" when it forms right after a sweep.               |
 //|                                                                  |
 //|  WHY IT DOES NOT REPAINT                                         |
 //|  --------------------------------------------------------------  |
-//|  Every signal is evaluated ONLY on fully CLOSED bars and anchored |
-//|  to a fixed bar time. The currently forming bar is never used to  |
-//|  print a signal, so once an arrow / level / FVG box is drawn it   |
-//|  never moves, changes colour, or disappears. Swing levels require |
-//|  'InpPivotLength' closed bars on each side before they are even   |
-//|  recognised -- that is confirmation LAG (inherent and honest),    |
-//|  not repainting.                                                  |
+//|  Each timeframe is read using its CLOSED bars only (series index  |
+//|  >= 1); the forming bar of any timeframe is never used. A sweep   |
+//|  is decided at the candle's close and anchored to a fixed bar     |
+//|  time, so once printed it never moves or disappears. A higher-TF  |
+//|  sweep therefore appears when that TF's candle closes             |
+//|  (confirmation lag) -- that is honest lag, not repainting.        |
 //+------------------------------------------------------------------+
 #property copyright "MD5 Liquidity Sweep + FVG"
 #property link      ""
-#property version   "1.00"
-#property description "Non-repaint ICT Buy/Sell-side liquidity sweeps + Real/Fake Fair Value Gaps"
+#property version   "2.00"
+#property description "Non-repaint MULTI-TIMEFRAME ICT liquidity sweeps + Real/Fake Fair Value Gaps"
 #property indicator_chart_window
-#property indicator_buffers 2
-#property indicator_plots   2
-
-//--- plot 0 : Buy-side liquidity sweep (bearish) -> DOWN arrow above bar
-#property indicator_label1  "BSL Sweep"
-#property indicator_type1   DRAW_ARROW
-#property indicator_color1  clrRed
-#property indicator_width1  2
-//--- plot 1 : Sell-side liquidity sweep (bullish) -> UP arrow below bar
-#property indicator_label2  "SSL Sweep"
-#property indicator_type2   DRAW_ARROW
-#property indicator_color2  clrLime
-#property indicator_width2  2
+#property indicator_buffers 0
+#property indicator_plots   0
 
 //==================== INPUTS =======================================
-input group "=== Liquidity / Sweep ==="
-input int    InpPivotLength     = 10;             // Swing pivot strength (bars each side)
-input int    InpMaxActiveLevels = 60;             // Max liquidity levels tracked at once
-input bool   InpShowSweptLevel  = true;           // Draw the swept liquidity level line
-input double InpArrowOffsetATR  = 0.5;            // Arrow distance from candle (x ATR)
-input color  InpBSLColor        = clrTomato;      // Buy-side (high) level + arrow colour
-input color  InpSSLColor        = clrDodgerBlue;  // Sell-side (low) level + arrow colour
+input group "=== Timeframes to scan for sweeps ==="
+input bool   InpTF_M1  = true;   // Scan M1 liquidity sweeps
+input bool   InpTF_M5  = true;   // Scan M5 liquidity sweeps
+input bool   InpTF_M15 = true;   // Scan M15 liquidity sweeps
+input bool   InpTF_M30 = true;   // Scan M30 liquidity sweeps
+input bool   InpTF_H1  = true;   // Scan H1 liquidity sweeps
+input bool   InpTF_H4  = true;   // Scan H4 liquidity sweeps
+input bool   InpTF_D1  = true;   // Scan D1 liquidity sweeps
+input bool   InpTF_W1  = false;  // Scan W1 liquidity sweeps
 
-input group "=== Fair Value Gaps (FVG) ==="
+input group "=== Liquidity / Sweep ==="
+input int    InpPivotLength     = 10;             // Swing pivot strength (bars each side, per TF)
+input int    InpBarsPerTF       = 500;            // History bars scanned per timeframe
+input bool   InpShowSweptLevel  = true;           // Draw the swept liquidity level line
+input double InpArrowOffsetFrac = 0.5;            // Arrow distance from candle (x candle range)
+input bool   InpScaleByTF       = true;           // Bigger markers/labels for higher timeframes
+input int    InpLabelFontSize   = 8;              // Base label font size
+input color  InpBSLColor        = clrTomato;      // Buy-side (high) sweep colour
+input color  InpSSLColor        = clrDodgerBlue;  // Sell-side (low) sweep colour
+
+input group "=== Fair Value Gaps (chart timeframe) ==="
 input bool   InpShowFVG         = true;           // Show Fair Value Gaps
 input bool   InpShowFakeFVG     = true;           // Also show 'fake' (weak) FVGs
 input int    InpATRPeriod       = 14;             // ATR period (displacement reference)
@@ -66,139 +72,135 @@ input double InpMinBodyRatio    = 0.50;           // REAL: middle candle body/ra
 input double InpMinGapATR       = 0.10;           // REAL: gap size >= x * ATR
 input int    InpSweepContextBars= 10;             // Tag FVG "+sweep" if sweep within N bars
 input int    InpFVGExtendBars   = 30;             // Extend FVG box this many bars to the right
+input int    InpMaxBars         = 2500;           // Max chart bars for FVG (0 = all)
 input color  InpRealBullColor   = clrForestGreen; // Real bullish FVG
 input color  InpFakeBullColor   = clrPaleGreen;   // Fake bullish FVG
 input color  InpRealBearColor   = clrFireBrick;   // Real bearish FVG
 input color  InpFakeBearColor   = clrMistyRose;   // Fake bearish FVG
 
 input group "=== Alerts (optional) ==="
-input bool   InpAlertPopup      = false;          // Popup alert on confirmed sweep
-input bool   InpAlertPush       = false;          // Push notification on confirmed sweep
+input bool   InpAlertPopup      = false;          // Popup alert on a fresh sweep (any TF)
+input bool   InpAlertPush       = false;          // Push notification on a fresh sweep (any TF)
 
 input group "=== General ==="
-input int    InpMaxBars         = 2500;           // Max history bars to process (0 = all)
 input string InpPrefix          = "MD5LS_";       // Chart-object name prefix
 
 //==================== GLOBALS ======================================
-double  BufBSL[];                  // buy-side sweep arrows (bearish)
-double  BufSSL[];                  // sell-side sweep arrows (bullish)
-double  g_atr[];                   // ATR values, aligned so g_atr[i] <-> bar i (0 = oldest)
+double  g_atr[];                     // ATR of the chart timeframe (FVG displacement reference)
 int     g_atrHandle = INVALID_HANDLE;
 
-struct SLevel
-  {
-   double   price;                 // level price (the swing high / low)
-   datetime time;                  // time of the pivot bar
-   int      dir;                   // +1 = BSL (swing high), -1 = SSL (swing low)
-   bool     swept;                 // already swept?
-  };
-SLevel  g_levels[];                // active + consumed liquidity levels
+ENUM_TIMEFRAMES g_tfs[];             // enabled timeframes
+string          g_tfNames[];         // their short names ("M1".."W1")
+int             g_tfCount = 0;
 
-int      g_lastBSLsweepBar = -1000000;  // bar index of last buy-side sweep (for FVG context)
-int      g_lastSSLsweepBar = -1000000;  // bar index of last sell-side sweep
-datetime g_lastAlertTime   = 0;         // de-dupe alerts (one per bar)
+datetime g_lastBar[];                // last seen bar-0 time per TF (new-bar detection)
+datetime g_lastAlertBSL[];           // last alerted BSL sweep time per TF (de-dupe)
+datetime g_lastAlertSSL[];           // last alerted SSL sweep time per TF
+
+datetime g_curBSL[];                 // chart-TF BSL sweep times (ascending) -> FVG context
+datetime g_curSSL[];                 // chart-TF SSL sweep times (ascending)
 
 //+------------------------------------------------------------------+
-//| Initialisation                                                   |
+//| Helpers                                                          |
 //+------------------------------------------------------------------+
-int OnInit()
+string TFName(const ENUM_TIMEFRAMES tf)
   {
-   SetIndexBuffer(0, BufBSL, INDICATOR_DATA);
-   SetIndexBuffer(1, BufSSL, INDICATOR_DATA);
-   ArraySetAsSeries(BufBSL, false);
-   ArraySetAsSeries(BufSSL, false);
-   ArraySetAsSeries(g_atr , false);
+   return(StringSubstr(EnumToString(tf), 7));      // "PERIOD_H4" -> "H4"
+  }
 
-   //--- 234 = Wingdings down arrow, 233 = Wingdings up arrow
-   PlotIndexSetInteger(0, PLOT_ARROW, 234);
-   PlotIndexSetInteger(1, PLOT_ARROW, 233);
-   PlotIndexSetInteger(0, PLOT_LINE_COLOR, InpBSLColor);
-   PlotIndexSetInteger(1, PLOT_LINE_COLOR, InpSSLColor);
-   PlotIndexSetDouble (0, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetDouble (1, PLOT_EMPTY_VALUE, EMPTY_VALUE);
-   PlotIndexSetString (0, PLOT_LABEL, "BSL Sweep (bearish)");
-   PlotIndexSetString (1, PLOT_LABEL, "SSL Sweep (bullish)");
-
-   g_atrHandle = iATR(_Symbol, _Period, InpATRPeriod);
-   if(g_atrHandle == INVALID_HANDLE)
+int TFRank(const ENUM_TIMEFRAMES tf)
+  {
+   switch(tf)
      {
-      Print("MD5LS: failed to create ATR handle");
-      return(INIT_FAILED);
+      case PERIOD_M1:  return(0);
+      case PERIOD_M5:  return(1);
+      case PERIOD_M15: return(2);
+      case PERIOD_M30: return(3);
+      case PERIOD_H1:  return(4);
+      case PERIOD_H4:  return(5);
+      case PERIOD_D1:  return(6);
+      case PERIOD_W1:  return(7);
+      default:         return(0);
      }
-
-   IndicatorSetString(INDICATOR_SHORTNAME, "MD5 Liquidity Sweep + FVG");
-   ArrayResize(g_levels, 0);
-   return(INIT_SUCCEEDED);
   }
 
-//+------------------------------------------------------------------+
-//| De-initialisation                                                |
-//+------------------------------------------------------------------+
-void OnDeinit(const int reason)
+int TFWidth(const ENUM_TIMEFRAMES tf)
   {
-   ObjectsDeleteAll(0, InpPrefix);
-   if(g_atrHandle != INVALID_HANDLE)
-      IndicatorRelease(g_atrHandle);
-   ChartRedraw();
+   return(1 + TFRank(tf)/2);                        // 1..4
   }
 
-//+------------------------------------------------------------------+
-//| Pivot (fractal) detection -- strict local extreme over 2*len+1   |
-//+------------------------------------------------------------------+
-bool IsPivotHigh(const double &h[], const int idx, const int len, const int total)
+void AddTF(const ENUM_TIMEFRAMES tf, const bool on)
   {
-   if(idx-len < 0 || idx+len > total-1) return(false);
-   double v = h[idx];
-   for(int k=idx-len; k<=idx+len; k++)
+   if(!on) return;
+   int s = g_tfCount;
+   ArrayResize(g_tfs,        s+1);
+   ArrayResize(g_tfNames,    s+1);
+   ArrayResize(g_lastBar,    s+1);
+   ArrayResize(g_lastAlertBSL,s+1);
+   ArrayResize(g_lastAlertSSL,s+1);
+   g_tfs[s]         = tf;
+   g_tfNames[s]     = TFName(tf);
+   g_lastBar[s]     = 0;
+   g_lastAlertBSL[s]= 0;
+   g_lastAlertSSL[s]= 0;
+   g_tfCount        = s+1;
+  }
+
+void PushTime(datetime &arr[], const datetime t)
+  {
+   int n = ArraySize(arr);
+   ArrayResize(arr, n+1);
+   arr[n] = t;
+  }
+
+// arr is ascending; is there a sweep at/just-before tb within 'withinSec'?
+bool RecentSweep(const datetime &arr[], const datetime tb, const int withinSec)
+  {
+   for(int i=ArraySize(arr)-1; i>=0; i--)
      {
-      if(k==idx) continue;
-      if(h[k] >= v) return(false);     // strict: ties disqualify
+      datetime s = arr[i];
+      if(s > tb) continue;                          // sweep is after this bar -> skip
+      return((tb - s) <= withinSec);                // nearest prior sweep decides
      }
-   return(true);
-  }
-bool IsPivotLow(const double &l[], const int idx, const int len, const int total)
-  {
-   if(idx-len < 0 || idx+len > total-1) return(false);
-   double v = l[idx];
-   for(int k=idx-len; k<=idx+len; k++)
-     {
-      if(k==idx) continue;
-      if(l[k] <= v) return(false);
-     }
-   return(true);
-  }
-
-//+------------------------------------------------------------------+
-//| Liquidity-level bookkeeping                                      |
-//+------------------------------------------------------------------+
-void TrimLevels()
-  {
-   int n = ArraySize(g_levels);
-   if(n <= InpMaxActiveLevels) return;
-   int remove = n - InpMaxActiveLevels;
-   for(int i=0; i<n-remove; i++)
-      g_levels[i] = g_levels[i+remove];     // drop the oldest 'remove' entries
-   ArrayResize(g_levels, n-remove);
-  }
-
-void AddLevelUnique(const double price, const datetime t, const int dir)
-  {
-   int n = ArraySize(g_levels);
-   for(int j=0; j<n; j++)
-      if(g_levels[j].time==t && g_levels[j].dir==dir) return;   // already stored
-   ArrayResize(g_levels, n+1);
-   g_levels[n].price = price;
-   g_levels[n].time  = t;
-   g_levels[n].dir   = dir;
-   g_levels[n].swept = false;
-   TrimLevels();
+   return(false);
   }
 
 //+------------------------------------------------------------------+
 //| Chart-object helpers                                             |
 //+------------------------------------------------------------------+
-void DrawSeg(const string name, datetime t1, double p1, datetime t2, double p2,
-             color clr, int width, ENUM_LINE_STYLE style)
+void DrawArrowObj(const string name, datetime t, double price, int code,
+                  color clr, int width, int anchor)
+  {
+   if(ObjectFind(0,name) < 0)
+      ObjectCreate(0,name,OBJ_ARROW,0,t,price);
+   ObjectSetInteger(0,name,OBJPROP_ARROWCODE,code);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
+   ObjectSetInteger(0,name,OBJPROP_WIDTH,width);
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,anchor);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,name,OBJPROP_TIME ,0,t);
+   ObjectSetDouble (0,name,OBJPROP_PRICE,0,price);
+  }
+
+void DrawTextObj(const string name, datetime t, double price, const string txt,
+                 color clr, int fontsize, ENUM_ANCHOR_POINT anchor)
+  {
+   if(ObjectFind(0,name) < 0)
+      ObjectCreate(0,name,OBJ_TEXT,0,t,price);
+   ObjectSetString (0,name,OBJPROP_TEXT,txt);
+   ObjectSetString (0,name,OBJPROP_FONT,"Arial");
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,fontsize);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,anchor);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,name,OBJPROP_TIME ,0,t);
+   ObjectSetDouble (0,name,OBJPROP_PRICE,0,price);
+  }
+
+void DrawSegObj(const string name, datetime t1, double p1, datetime t2, double p2,
+                color clr, int width, ENUM_LINE_STYLE style)
   {
    if(ObjectFind(0,name) < 0)
       ObjectCreate(0,name,OBJ_TREND,0,t1,p1,t2,p2);
@@ -215,8 +217,8 @@ void DrawSeg(const string name, datetime t1, double p1, datetime t2, double p2,
    ObjectSetDouble (0,name,OBJPROP_PRICE,1,p2);
   }
 
-void DrawRect(const string name, datetime t1, double p1, datetime t2, double p2,
-              color clr, bool fill, ENUM_LINE_STYLE style)
+void DrawRectObj(const string name, datetime t1, double p1, datetime t2, double p2,
+                 color clr, bool fill, ENUM_LINE_STYLE style)
   {
    if(ObjectFind(0,name) < 0)
       ObjectCreate(0,name,OBJ_RECTANGLE,0,t1,p1,t2,p2);
@@ -233,93 +235,162 @@ void DrawRect(const string name, datetime t1, double p1, datetime t2, double p2,
    ObjectSetDouble (0,name,OBJPROP_PRICE,1,p2);
   }
 
-void DrawText(const string name, datetime t, double price, const string txt, color clr)
-  {
-   if(ObjectFind(0,name) < 0)
-      ObjectCreate(0,name,OBJ_TEXT,0,t,price);
-   ObjectSetString (0,name,OBJPROP_TEXT,txt);
-   ObjectSetString (0,name,OBJPROP_FONT,"Arial");
-   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,8);
-   ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
-   ObjectSetInteger(0,name,OBJPROP_ANCHOR,ANCHOR_LEFT);
-   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
-   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,name,OBJPROP_TIME ,0,t);
-   ObjectSetDouble (0,name,OBJPROP_PRICE,0,price);
-  }
-
 //+------------------------------------------------------------------+
-//| Alerts (only for the freshly-closed live bar, never on history)  |
+//| Alert for a freshly-closed sweep (de-duped per TF + side)        |
 //+------------------------------------------------------------------+
-void FireAlert(const datetime t, const string msg)
+void FireSweepAlert(const int ti, const string tn, const int dir,
+                    const double level, const datetime tSweep)
   {
    if(!InpAlertPopup && !InpAlertPush) return;
-   if(t == g_lastAlertTime) return;               // one alert per bar
-   g_lastAlertTime = t;
-   string full = _Symbol + " " + EnumToString(_Period) + ": " + msg;
-   if(InpAlertPopup) Alert(full);
-   if(InpAlertPush)  SendNotification(full);
+   if(dir > 0)
+     {
+      if(tSweep <= g_lastAlertBSL[ti]) return;
+      g_lastAlertBSL[ti] = tSweep;
+     }
+   else
+     {
+      if(tSweep <= g_lastAlertSSL[ti]) return;
+      g_lastAlertSSL[ti] = tSweep;
+     }
+   string side = (dir>0 ? "BUY-side (bearish)" : "SELL-side (bullish)");
+   string msg  = _Symbol + " " + tn + ": " + side + " liquidity sweep @ " + DoubleToString(level,_Digits);
+   if(InpAlertPopup) Alert(msg);
+   if(InpAlertPush)  SendNotification(msg);
   }
 
 //+------------------------------------------------------------------+
-//| Sweep detection on a single CLOSED bar i                         |
+//| Draw one sweep (arrow + label + swept level)                     |
 //+------------------------------------------------------------------+
-void CheckSweeps(const int i, const int rates_total, const int prev_calculated,
-                 const datetime &time[], const double &high[],
-                 const double &low[], const double &close[])
+void DrawSweep(const int ti, const string tn, const ENUM_TIMEFRAMES tf, const int dir,
+               const datetime tSweep, const double level, const datetime tPivot,
+               const double hj, const double lj, const bool live)
   {
-   double atr = g_atr[i];
-   if(atr <= 0.0) atr = (high[i]-low[i]);         // fallback offset
-   bool live = (prev_calculated>0 && i==rates_total-2);   // the just-closed real-time bar
+   double rng = hj - lj;
+   if(rng <= 0.0) rng = MathMax(level*0.0005, _Point*10);
+   double off  = rng * InpArrowOffsetFrac;
+   int    w    = (InpScaleByTF ? TFWidth(tf) : 1);
+   int    fs   = InpLabelFontSize + (InpScaleByTF ? MathMin(TFRank(tf),5) : 0);
+   color  col  = (dir>0 ? InpBSLColor : InpSSLColor);
+   string side = (dir>0 ? "BSL" : "SSL");
+   string base = InpPrefix + tn + "_" + side + "_" + (string)(long)tSweep;
 
-   int cnt = ArraySize(g_levels);
-   for(int j=0; j<cnt; j++)
+   double ap = (dir>0 ? hj+off : lj-off);
+   int    aAnchor = (dir>0 ? ANCHOR_BOTTOM : ANCHOR_TOP);
+   DrawArrowObj(base, tSweep, ap, (dir>0 ? 234 : 233), col, w, aAnchor);
+
+   double lp = (dir>0 ? ap + off*0.6 : ap - off*0.6);
+   ENUM_ANCHOR_POINT tAnchor = (dir>0 ? ANCHOR_LOWER : ANCHOR_UPPER);
+   DrawTextObj(base+"_x", tSweep, lp, tn+" "+side, col, fs, tAnchor);
+
+   if(InpShowSweptLevel)
+      DrawSegObj(base+"_lvl", tPivot, level, tSweep, level, col, w, STYLE_SOLID);
+
+   if(live) FireSweepAlert(ti, tn, dir, level, tSweep);
+  }
+
+//+------------------------------------------------------------------+
+//| Scan ONE timeframe for pivots + sweeps (closed bars only)        |
+//+------------------------------------------------------------------+
+void ScanTF(const int ti)
+  {
+   ENUM_TIMEFRAMES tf = g_tfs[ti];
+   string          tn = g_tfNames[ti];
+   bool firstScan = (g_lastBar[ti] == 0);            // first time we see this TF -> no alerts
+   int  len  = InpPivotLength;
+   int  need = 2*len + 3;
+   int  avail = Bars(_Symbol, tf);
+   if(avail < need+2) return;
+   int  cnt = MathMin(InpBarsPerTF, avail);
+   if(cnt < need+2) return;
+
+   double   H[], L[], C[];
+   datetime T[];
+   ArraySetAsSeries(H,true);
+   ArraySetAsSeries(L,true);
+   ArraySetAsSeries(C,true);
+   ArraySetAsSeries(T,true);
+   if(CopyHigh (_Symbol,tf,0,cnt,H) <= 0) return;
+   if(CopyLow  (_Symbol,tf,0,cnt,L) <= 0) return;
+   if(CopyClose(_Symbol,tf,0,cnt,C) <= 0) return;
+   if(CopyTime (_Symbol,tf,0,cnt,T) <= 0) return;
+   int n = ArraySize(H);
+   if(n < need+2) return;
+
+   //--- bounded redraw: clear this TF's objects, then rebuild from the window
+   ObjectsDeleteAll(0, InpPrefix + tn + "_");
+
+   bool isCur = (tf == _Period);
+   if(isCur) { ArrayResize(g_curBSL,0); ArrayResize(g_curSSL,0); }
+
+   //--- 1) collect confirmed pivots (series idx: 0 = forming, 1 = last closed)
+   double   pPrice[];
+   datetime pTime[];
+   int      pIdx[];
+   int      pDir[];
+   bool     pSwept[];
+   for(int k=len+1; k<=n-1-len; k++)
      {
-      if(g_levels[j].swept) continue;
-      if(g_levels[j].time >= time[i]) continue;   // only levels formed BEFORE this bar
-
-      if(g_levels[j].dir > 0)
+      bool ph=true, pl=true;
+      double hv=H[k], lv=L[k];
+      for(int m=k-len; m<=k+len; m++)
         {
-         //--- Buy-side liquidity: stops resting ABOVE a swing high
-         double H = g_levels[j].price;
-         if(high[i] > H && close[i] < H)          // wick above, close back below
-           {
-            g_levels[j].swept = true;
-            BufBSL[i]         = high[i] + InpArrowOffsetATR*atr;
-            g_lastBSLsweepBar = i;
-            if(InpShowSweptLevel)
-              {
-               string nm = InpPrefix + "BSL_" + (string)(long)g_levels[j].time;
-               DrawSeg (nm,       g_levels[j].time, H, time[i], H, InpBSLColor, 1, STYLE_SOLID);
-               DrawText(nm+"_t",  g_levels[j].time, H, "BSL", InpBSLColor);
-              }
-            if(live) FireAlert(time[i], "Buy-side liquidity SWEEP (bearish) @ "+DoubleToString(H,_Digits));
-           }
+         if(m==k) continue;
+         if(H[m] >= hv) ph=false;
+         if(L[m] <= lv) pl=false;
+         if(!ph && !pl) break;
         }
-      else
+      if(ph)
         {
-         //--- Sell-side liquidity: stops resting BELOW a swing low
-         double L = g_levels[j].price;
-         if(low[i] < L && close[i] > L)           // wick below, close back above
+         int s=ArraySize(pPrice);
+         ArrayResize(pPrice,s+1); ArrayResize(pTime,s+1); ArrayResize(pIdx,s+1);
+         ArrayResize(pDir,s+1);   ArrayResize(pSwept,s+1);
+         pPrice[s]=hv; pTime[s]=T[k]; pIdx[s]=k; pDir[s]=+1; pSwept[s]=false;
+        }
+      if(pl)
+        {
+         int s=ArraySize(pPrice);
+         ArrayResize(pPrice,s+1); ArrayResize(pTime,s+1); ArrayResize(pIdx,s+1);
+         ArrayResize(pDir,s+1);   ArrayResize(pSwept,s+1);
+         pPrice[s]=lv; pTime[s]=T[k]; pIdx[s]=k; pDir[s]=-1; pSwept[s]=false;
+        }
+     }
+   int np = ArraySize(pPrice);
+   if(np == 0) return;
+
+   //--- 2) sweeps, chronologically oldest -> newest (first touch consumes a level)
+   for(int j=n-2; j>=1; j--)
+     {
+      double hj=H[j], lj=L[j], cj=C[j];
+      bool live = (j==1 && !firstScan);
+      for(int q=0; q<np; q++)
+        {
+         if(pSwept[q]) continue;
+         if(pIdx[q] <= j) continue;                 // level must be OLDER than the sweep bar
+         double P = pPrice[q];
+         if(pDir[q] > 0)
            {
-            g_levels[j].swept = true;
-            BufSSL[i]         = low[i] - InpArrowOffsetATR*atr;
-            g_lastSSLsweepBar = i;
-            if(InpShowSweptLevel)
+            if(hj > P && cj < P)                     // wick above a high, close back below
               {
-               string nm = InpPrefix + "SSL_" + (string)(long)g_levels[j].time;
-               DrawSeg (nm,       g_levels[j].time, L, time[i], L, InpSSLColor, 1, STYLE_SOLID);
-               DrawText(nm+"_t",  g_levels[j].time, L, "SSL", InpSSLColor);
+               pSwept[q]=true;
+               DrawSweep(ti, tn, tf, +1, T[j], P, pTime[q], hj, lj, live);
+               if(isCur) PushTime(g_curBSL, T[j]);
               }
-            if(live) FireAlert(time[i], "Sell-side liquidity SWEEP (bullish) @ "+DoubleToString(L,_Digits));
+           }
+         else
+           {
+            if(lj < P && cj > P)                     // wick below a low, close back above
+              {
+               pSwept[q]=true;
+               DrawSweep(ti, tn, tf, -1, T[j], P, pTime[q], hj, lj, live);
+               if(isCur) PushTime(g_curSSL, T[j]);
+              }
            }
         }
      }
   }
 
 //+------------------------------------------------------------------+
-//| Fair Value Gap detection + Real/Fake classification at bar i     |
-//| (3-candle pattern on bars i-2, i-1, i; confirmed at close of i)  |
+//| Fair Value Gap + Real/Fake classification at chart bar i         |
 //+------------------------------------------------------------------+
 void CheckFVG(const int i, const datetime &time[], const double &o[],
               const double &high[], const double &low[], const double &close[])
@@ -329,19 +400,18 @@ void CheckFVG(const int i, const datetime &time[], const double &o[],
    double atr = g_atr[i];
    if(atr <= 0.0) return;
 
-   bool bull = (low[i]  > high[i-2]);   // bullish imbalance: candle3 low above candle1 high
-   bool bear = (high[i] < low[i-2]);    // bearish imbalance: candle3 high below candle1 low
+   bool bull = (low[i]  > high[i-2]);
+   bool bear = (high[i] < low[i-2]);
    if(!bull && !bear) return;
 
    double gTop, gBot;
    int    dir;
-   if(bull) { gTop = low[i];   gBot = high[i-2]; dir = +1; }   // gap between C1 high and C3 low
-   else     { gTop = low[i-2]; gBot = high[i];   dir = -1; }   // gap between C3 high and C1 low
+   if(bull) { gTop = low[i];   gBot = high[i-2]; dir = +1; }   // gap: C1 high -> C3 low
+   else     { gTop = low[i-2]; gBot = high[i];   dir = -1; }   // gap: C3 high -> C1 low
 
    double gap = gTop - gBot;
    if(gap <= 0.0) return;
 
-   //--- displacement = the middle candle (i-1)
    double midRange = high[i-1] - low[i-1];
    double midBody  = MathAbs(close[i-1] - o[i-1]);
    double bodyRatio= (midRange > 0.0 ? midBody/midRange : 0.0);
@@ -349,13 +419,11 @@ void CheckFVG(const int i, const datetime &time[], const double &o[],
    bool strong = (midRange >= InpDispATR*atr) && (bodyRatio >= InpMinBodyRatio);
    bool bigGap = (gap >= InpMinGapATR*atr);
    bool real   = (strong && bigGap);
-
    if(!real && !InpShowFakeFVG) return;
 
-   //--- was there an aligned sweep just before this gap?
-   bool postSweep = false;
-   if(dir>0 && (i - g_lastSSLsweepBar) <= InpSweepContextBars) postSweep = true;
-   if(dir<0 && (i - g_lastBSLsweepBar) <= InpSweepContextBars) postSweep = true;
+   int  withinSec = InpSweepContextBars * PeriodSeconds(_Period);
+   bool postSweep = (dir>0 ? RecentSweep(g_curSSL, time[i], withinSec)
+                           : RecentSweep(g_curBSL, time[i], withinSec));
 
    color col;
    if(dir>0) col = (real ? InpRealBullColor : InpFakeBullColor);
@@ -363,13 +431,54 @@ void CheckFVG(const int i, const datetime &time[], const double &o[],
 
    datetime t1 = time[i-2];
    datetime t2 = time[i] + (datetime)(InpFVGExtendBars * PeriodSeconds(_Period));
-
-   string nm = InpPrefix + "FVG_" + (string)(long)time[i-2];
-   DrawRect(nm, t1, gTop, t2, gBot, col, real, (real ? STYLE_SOLID : STYLE_DOT));
+   string   nm = InpPrefix + "FVG_" + (string)(long)time[i-2];
+   DrawRectObj(nm, t1, gTop, t2, gBot, col, real, (real ? STYLE_SOLID : STYLE_DOT));
 
    string lbl = (real ? "FVG" : "fvg?");
    if(postSweep) lbl += "+sweep";
-   DrawText(nm+"_t", time[i], (dir>0 ? gTop : gBot), lbl, col);
+   DrawTextObj(nm+"_t", time[i], (dir>0 ? gTop : gBot), lbl, col, InpLabelFontSize, ANCHOR_LEFT);
+  }
+
+//+------------------------------------------------------------------+
+//| Initialisation                                                   |
+//+------------------------------------------------------------------+
+int OnInit()
+  {
+   g_tfCount = 0;
+   ArrayResize(g_tfs,0); ArrayResize(g_tfNames,0); ArrayResize(g_lastBar,0);
+   ArrayResize(g_lastAlertBSL,0); ArrayResize(g_lastAlertSSL,0);
+   AddTF(PERIOD_M1 , InpTF_M1);
+   AddTF(PERIOD_M5 , InpTF_M5);
+   AddTF(PERIOD_M15, InpTF_M15);
+   AddTF(PERIOD_M30, InpTF_M30);
+   AddTF(PERIOD_H1 , InpTF_H1);
+   AddTF(PERIOD_H4 , InpTF_H4);
+   AddTF(PERIOD_D1 , InpTF_D1);
+   AddTF(PERIOD_W1 , InpTF_W1);
+
+   ArraySetAsSeries(g_atr, false);
+   g_atrHandle = iATR(_Symbol, _Period, InpATRPeriod);
+   if(g_atrHandle == INVALID_HANDLE)
+     {
+      Print("MD5LS: failed to create ATR handle");
+      return(INIT_FAILED);
+     }
+
+   IndicatorSetString(INDICATOR_SHORTNAME, "MD5 MTF Liquidity Sweep + FVG");
+   ArrayResize(g_curBSL,0);
+   ArrayResize(g_curSSL,0);
+   return(INIT_SUCCEEDED);
+  }
+
+//+------------------------------------------------------------------+
+//| De-initialisation                                                |
+//+------------------------------------------------------------------+
+void OnDeinit(const int reason)
+  {
+   ObjectsDeleteAll(0, InpPrefix);
+   if(g_atrHandle != INVALID_HANDLE)
+      IndicatorRelease(g_atrHandle);
+   ChartRedraw();
   }
 
 //+------------------------------------------------------------------+
@@ -389,51 +498,48 @@ int OnCalculate(const int rates_total,
    int warmup = 2*InpPivotLength + 3;
    if(rates_total < warmup + 2) return(0);
 
-   //--- make sure ATR is ready and aligned (g_atr[i] <-> bar i, 0 = oldest)
+   //--- ATR of the chart timeframe (for FVG), aligned g_atr[i] <-> bar i
    if(BarsCalculated(g_atrHandle) < rates_total) return(prev_calculated);
    if(CopyBuffer(g_atrHandle, 0, 0, rates_total, g_atr) < rates_total) return(prev_calculated);
 
-   int start;
-   if(prev_calculated == 0)
+   bool fullBuild = (prev_calculated == 0);
+   if(fullBuild)
      {
-      //--- full (re)build: wipe objects + state, rebuild deterministically
       ObjectsDeleteAll(0, InpPrefix);
-      ArrayResize(g_levels, 0);
-      g_lastBSLsweepBar = -1000000;
-      g_lastSSLsweepBar = -1000000;
-      start = warmup;
-      if(InpMaxBars > 0 && rates_total - InpMaxBars > start)
-         start = rates_total - InpMaxBars;
-      for(int i=0; i<start; i++) { BufBSL[i]=EMPTY_VALUE; BufSSL[i]=EMPTY_VALUE; }
+      for(int t=0; t<g_tfCount; t++)
+        { g_lastBar[t]=0; g_lastAlertBSL[t]=0; g_lastAlertSSL[t]=0; }
+      ArrayResize(g_curBSL,0);
+      ArrayResize(g_curSSL,0);
+     }
+
+   //--- Multi-timeframe sweep scan (each TF re-scanned only when it prints a new bar)
+   for(int t=0; t<g_tfCount; t++)
+     {
+      datetime bt = iTime(_Symbol, g_tfs[t], 0);
+      if(bt <= 0) continue;                           // that TF not ready yet
+      if(fullBuild || bt != g_lastBar[t])
+        {
+         ScanTF(t);
+         g_lastBar[t] = bt;
+        }
+     }
+
+   //--- Fair Value Gaps on the chart timeframe (closed bars only)
+   int startF;
+   if(fullBuild)
+     {
+      startF = warmup;
+      if(InpMaxBars > 0 && rates_total - InpMaxBars > startF)
+         startF = rates_total - InpMaxBars;
      }
    else
      {
-      start = prev_calculated - 1;                 // recompute the previously-last bar
-      if(start < warmup) start = warmup;
+      startF = prev_calculated - 1;
+      if(startF < warmup) startF = warmup;
      }
-
-   for(int i=start; i<rates_total; i++)
+   for(int i=startF; i<rates_total; i++)
      {
-      BufBSL[i] = EMPTY_VALUE;
-      BufSSL[i] = EMPTY_VALUE;
-
-      //--- NEVER finalise a signal on the still-forming last bar => non-repaint
-      if(i >= rates_total-1) break;
-
-      //--- 1) confirm the pivot that completed InpPivotLength bars ago
-      int p = i - InpPivotLength;
-      if(p >= InpPivotLength)
-        {
-         if(IsPivotHigh(high, p, InpPivotLength, rates_total))
-            AddLevelUnique(high[p], time[p], +1);
-         if(IsPivotLow(low, p, InpPivotLength, rates_total))
-            AddLevelUnique(low[p], time[p], -1);
-        }
-
-      //--- 2) sweeps on this closed bar
-      CheckSweeps(i, rates_total, prev_calculated, time, high, low, close);
-
-      //--- 3) fair value gap on the triple ending at this closed bar
+      if(i >= rates_total-1) break;                   // never use the forming bar
       CheckFVG(i, time, open, high, low, close);
      }
 
