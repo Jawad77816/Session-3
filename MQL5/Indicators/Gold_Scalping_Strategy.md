@@ -81,9 +81,12 @@ down), preferably leaving a bearish Real FVG.
 ## 5. Entry rules (precise, non-repaint)
 
 The indicator's on-chart **BUY / SELL signal** is your trigger (BUY = reclaimed sell-side sweep,
-SELL = reclaimed buy-side sweep). Only act on a signal that agrees with step 1–2 above (higher-TF
+SELL = reclaimed buy-side sweep). With `InpUseConfirm` on (default), a signal only prints **after a
+follow-through candle breaks the sweep's extreme**, so it already waits for confirmation for you —
+it fires one candle after the sweep. Only act on a signal that agrees with step 1–2 above (higher-TF
 bias + swept into a higher-TF level) — a signal *against* a fresh higher-TF level is the trap side,
-skip it.
+skip it. If you want the indicator itself to hide counter-trend signals, switch on
+`InpUseTrendFilter` (trend-continuation mode).
 
 Pick one (B is tighter):
 

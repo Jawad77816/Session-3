@@ -104,6 +104,26 @@ for a clean BUY/SELL-only chart.
 > higher-timeframe bias, land into a higher-TF level, and leave a Real FVG — see
 > `Gold_Scalping_Strategy.md`.
 
+#### Signal quality filters (why a sweep may NOT produce a signal)
+A raw sweep is marked (`<TF> BSL/SSL`) but a **BUY/SELL signal is only printed when it passes the
+quality filters** — this is what stops the counter-trend "falling-knife" signals:
+
+1. **Strong close** (`InpSignalStrongClose`, on): the sweep must close in the reversal half of its
+   own range — no half-hearted reclaims.
+2. **Follow-through confirmation** (`InpUseConfirm`, on, the key one): the **next closed candle must
+   break the sweep candle's extreme** — close *above* the sweep high for a BUY, *below* the sweep
+   low for a SELL. A reversal with no follow-through (exactly why two counter-trend M1 buys failed
+   in a strong down-move) is rejected, while a sweep with real displacement after it (e.g. a sell at
+   a top that drops hard) still fires. Cost: the signal prints **one candle after** the sweep.
+3. **EMA trend filter** (`InpUseTrendFilter`, off by default): if on, only BUY when the close is
+   above that timeframe's EMA and only SELL when below. It blocks counter-trend signals outright,
+   but also suppresses genuine reversals at tops/bottoms — leave it off unless you only want
+   trend-continuation signals.
+
+So you will still see the `<TF> SSL`/`<TF> BSL` sweep marker, but no `<TF> BUY`/`SELL` until the
+move is confirmed. Fewer signals, materially higher quality. (No filter makes signals "always
+right" — these cut the obvious low-probability ones, nothing can remove risk entirely.)
+
 ### Timeframe confirmation lag (important)
 A higher-timeframe sweep **appears only when that timeframe's candle closes**. On M1 you will see
 an H4 sweep up to ~4 hours after the wick happened — because until the H4 candle closes, there is
@@ -169,6 +189,13 @@ repaint*. The mark, once printed, never moves.
 | `InpSignalWidth` | `4` | BUY/SELL arrow size (prominence). |
 | `InpSignalFontSize` | `12` | BUY/SELL label font size. |
 | `InpSignalExtraOffsetFrac` | `0.9` | Extra distance the signal sits beyond the raw sweep marker. |
+
+### Signal quality filters
+| Input | Default | Meaning |
+|---|---|---|
+| `InpUseConfirm` | `true` | Require a follow-through candle to break the sweep's extreme before signalling (prints 1 candle later; filters counter-trend failures). |
+| `InpUseTrendFilter` | `false` | Only signal with that timeframe's EMA trend (BUY above EMA, SELL below). Blocks counter-trend but also mutes reversal tops/bottoms. |
+| `InpTrendEMAPeriod` | `50` | EMA period for the trend filter. |
 
 ### Fair Value Gaps (chart timeframe)
 | Input | Default | Meaning |

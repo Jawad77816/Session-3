@@ -73,6 +73,11 @@ input int    InpSignalWidth     = 4;              // BUY/SELL arrow size (promin
 input int    InpSignalFontSize  = 12;             // BUY/SELL label font size
 input double InpSignalExtraOffsetFrac = 0.9;      // Extra distance beyond the sweep marker
 
+input group "=== Signal quality filters ==="
+input bool   InpUseConfirm      = true;           // Require follow-through: next candle breaks the sweep extreme
+input bool   InpUseTrendFilter  = false;          // Only signal with the timeframe's EMA trend
+input int    InpTrendEMAPeriod  = 50;             // EMA period for the trend filter
+
 input group "=== Fair Value Gaps (chart timeframe) ==="
 input bool   InpShowFVG         = true;           // Show Fair Value Gaps
 input bool   InpShowFakeFVG     = true;           // Also show 'fake' (weak) FVGs
@@ -353,32 +358,6 @@ void DrawSignal(const string tn, const ENUM_TIMEFRAMES tf, const bool isBuy,
   }
 
 //+------------------------------------------------------------------+
-//| Handle a confirmed sweep: context + marker + signal + alert      |
-//+------------------------------------------------------------------+
-void OnSweepHit(const int ti, const string tn, const ENUM_TIMEFRAMES tf, const int dir,
-                const datetime tSweep, const double level, const datetime tPivot,
-                const double hj, const double lj, const double cj,
-                const bool isCur, const bool live)
-  {
-   if(isCur)
-     {
-      if(dir > 0) PushTime(g_curBSL, tSweep);
-      else        PushTime(g_curSSL, tSweep);
-     }
-
-   if(InpShowSweeps)
-      DrawSweepMark(tn, tf, dir, tSweep, level, tPivot, hj, lj);
-
-   bool isBuy = (dir < 0);                              // sell-side sweep reclaimed -> BUY
-   bool pass  = (!InpSignalStrongClose || FavorableClose(isBuy, hj, lj, cj));
-   if(InpShowSignals && pass)
-      DrawSignal(tn, tf, isBuy, tSweep, hj, lj);
-
-   if(live)
-      FireAlert(ti, tn, dir, level, tSweep, (InpShowSignals && pass));
-  }
-
-//+------------------------------------------------------------------+
 //| Scan ONE timeframe for pivots + sweeps (closed bars only)        |
 //+------------------------------------------------------------------+
 void ScanTF(const int ti)
@@ -447,32 +426,66 @@ void ScanTF(const int ti)
    int np = ArraySize(pPrice);
    if(np == 0) return;
 
+   //--- optional EMA for the trend filter (manual, closed bars only)
+   double maArr[];
+   if(InpUseTrendFilter)
+     {
+      ArrayResize(maArr, n);
+      double kk = 2.0/(InpTrendEMAPeriod + 1.0);
+      maArr[n-1] = C[n-1];
+      for(int i=n-2; i>=0; i--)
+         maArr[i] = C[i]*kk + maArr[i+1]*(1.0-kk);
+     }
+
    //--- 2) sweeps, chronologically oldest -> newest (first touch consumes a level)
    for(int j=n-2; j>=1; j--)
      {
       double hj=H[j], lj=L[j], cj=C[j];
-      bool live = (j==1 && !firstScan);
       for(int q=0; q<np; q++)
         {
          if(pSwept[q]) continue;
          if(pIdx[q] <= j) continue;                 // level must be OLDER than the sweep bar
          double P = pPrice[q];
-         if(pDir[q] > 0)
+         int sdir = 0;
+         if(pDir[q] > 0 && hj > P && cj < P) sdir = +1;   // buy-side swept  -> SELL
+         if(pDir[q] < 0 && lj < P && cj > P) sdir = -1;   // sell-side swept -> BUY
+         if(sdir == 0) continue;
+         pSwept[q] = true;
+
+         //--- current-TF context for the FVG "+sweep" tag
+         if(isCur) { if(sdir>0) PushTime(g_curBSL, T[j]); else PushTime(g_curSSL, T[j]); }
+
+         //--- raw sweep marker (unfiltered - it shows the liquidity event itself)
+         if(InpShowSweeps)
+            DrawSweepMark(tn, tf, sdir, T[j], P, pTime[q], hj, lj);
+
+         //--- signal quality filters --------------------------------------
+         bool isBuy = (sdir < 0);
+         bool ok    = true;
+         // (a) the sweep must close in the reversal half of its own range
+         if(InpSignalStrongClose && !FavorableClose(isBuy, hj, lj, cj)) ok = false;
+         // (b) follow-through: the NEXT closed candle must break the sweep's extreme
+         if(ok && InpUseConfirm)
            {
-            if(hj > P && cj < P)                     // wick above a high, close back below -> SELL
-              {
-               pSwept[q]=true;
-               OnSweepHit(ti, tn, tf, +1, T[j], P, pTime[q], hj, lj, cj, isCur, live);
-              }
+            if(j < 2) ok = false;                               // next bar not closed yet -> wait
+            else if(isBuy ? !(C[j-1] > hj) : !(C[j-1] < lj)) ok = false;
            }
+         // (c) optional EMA trend alignment on this timeframe
+         if(ok && InpUseTrendFilter)
+           {
+            double ema = maArr[j];
+            if(isBuy ? !(cj > ema) : !(cj < ema)) ok = false;
+           }
+
+         if(InpShowSignals && ok)
+            DrawSignal(tn, tf, isBuy, T[j], hj, lj);
+
+         //--- alert when the deciding bar is the newest closed bar
+         bool sigLive = (InpUseConfirm ? (j==2) : (j==1)) && !firstScan;
+         if(InpShowSignals)
+           { if(ok && sigLive) FireAlert(ti, tn, sdir, P, T[j], true); }
          else
-           {
-            if(lj < P && cj > P)                     // wick below a low, close back above -> BUY
-              {
-               pSwept[q]=true;
-               OnSweepHit(ti, tn, tf, -1, T[j], P, pTime[q], hj, lj, cj, isCur, live);
-              }
-           }
+           { if(j==1 && !firstScan) FireAlert(ti, tn, sdir, P, T[j], false); }
         }
      }
   }
