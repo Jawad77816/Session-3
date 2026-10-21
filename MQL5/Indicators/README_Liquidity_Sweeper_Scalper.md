@@ -1,19 +1,25 @@
-# MD5 Multi-Timeframe Liquidity Sweep + Fair Value Gap (MQL5, non-repaint)
+# Liquidity Sweeper Scalper (MQL5, non-repaint, multi-timeframe)
 
-A MetaTrader 5 custom indicator that marks **buy-side** and **sell-side liquidity sweeps across
-every major timeframe at once** (M1, M5, M15, M30, H1, H4, D1, and optionally W1), draws the
-**price level that was swept**, labels each sweep with the timeframe it belongs to, and plots
-**Fair Value Gaps (FVGs)** on the chart timeframe with a **Real vs Fake** classification.
+A MetaTrader 5 custom indicator for sweep-based scalping. By default the chart stays **clean** and
+shows only two things:
 
-**File:** `MD5_Liquidity_Sweep.mq5`
+1. A small **circle** on every **liquidity sweep**, on every enabled timeframe (M1, M5, M15, M30,
+   H1, H4, D1, W1 optional) — at the **top** of the candle for a buy-side (high) sweep, at the
+   **bottom** for a sell-side (low) sweep.
+2. Prominent, confirmed **BUY / SELL signals** — BUY (aqua) below the bar, SELL (red) above it.
+
+Everything else still runs in the backend but is **hidden by default** and can be switched back on:
+the verbose BSL/SSL arrows + labels + swept-level lines (`InpShowSweeps`), and the **Fair Value
+Gaps** real-vs-fake engine (`InpShowFVG`).
+
+**File:** `Liquidity_Sweeper_Scalper.mq5`
 **Platform:** MetaTrader 5 (any symbol, any timeframe)
 **Window:** main chart window (object-based drawing)
 **Repainting:** none — every signal is finalised on a *closed* bar of its own timeframe.
 
-> **What changed in v2.00:** sweeps are now **multi-timeframe**. Attach it to one chart (e.g. M1)
-> and it shows the sweeps of all enabled timeframes, each labelled `<TF> BSL` / `<TF> SSL`, with
-> higher timeframes drawn bigger/bolder. Drawing moved from indicator buffers to chart objects so
-> a higher-timeframe event lands at the correct time on your lower-timeframe chart.
+> **What changed in v3.00:** the chart is reduced to sweep **circles** + **BUY/SELL** signals.
+> The FVG boxes and the verbose per-timeframe BSL/SSL markers are now **off by default** (toggle
+> them back on any time). All detection logic is unchanged underneath.
 
 ---
 
@@ -149,10 +155,10 @@ repaint*. The mark, once printed, never moves.
 
 ## 4. Installation
 
-1. Copy `MD5_Liquidity_Sweep.mq5` into your terminal's data folder under `MQL5/Indicators/`
+1. Copy `Liquidity_Sweeper_Scalper.mq5` into your terminal's data folder under `MQL5/Indicators/`
    (in MT5: **File → Open Data Folder**).
 2. In **MetaEditor** (F4) open the file and **Compile** (F7) → expect `0 errors`.
-3. In MT5 refresh **Navigator → Indicators** and drag **MD5 MTF Liquidity Sweep + FVG** onto a
+3. In MT5 refresh **Navigator → Indicators** and drag **Liquidity Sweeper Scalper** onto a
    chart (M1 or M5 is ideal for scalping).
 
 > Authored and statically reviewed outside MetaEditor — compile once in your own MetaEditor to
@@ -171,18 +177,26 @@ repaint*. The mark, once printed, never moves.
 |---|---|---|
 | `InpPivotLength` | `10` | Swing pivot strength: bars on **each** side, applied per timeframe. Higher = fewer, more significant levels + more confirmation lag. |
 | `InpBarsPerTF` | `500` | How many bars of history to scan per timeframe. |
-| `InpShowSweptLevel` | `true` | Draw the horizontal line at the swept level (swing → sweep). |
-| `InpArrowOffsetFrac` | `0.5` | Arrow distance from the candle, as a fraction of the sweep candle's range. |
-| `InpScaleByTF` | `true` | Bigger/bolder markers and labels for higher timeframes. |
+| `InpShowSweptLevel` | `true` | Draw the swept-level line (only relevant when the verbose markers are on). |
+| `InpArrowOffsetFrac` | `0.5` | Marker distance from the candle, as a fraction of the sweep candle's range. |
+| `InpScaleByTF` | `true` | Bigger markers/labels/circles for higher timeframes. |
 | `InpLabelFontSize` | `8` | Base label font size. |
-| `InpBSLColor` | `clrTomato` | Buy-side sweep colour (all timeframes). |
-| `InpSSLColor` | `clrDodgerBlue` | Sell-side sweep colour (all timeframes). |
+| `InpBSLColor` | `clrTomato` | Buy-side verbose-marker colour. |
+| `InpSSLColor` | `clrDodgerBlue` | Sell-side verbose-marker colour. |
+
+### Liquidity sweep circles (the clean default highlight)
+| Input | Default | Meaning |
+|---|---|---|
+| `InpShowSweepCircle` | `true` | Mark every sweep with a circle — top of the candle for a high/buy-side sweep, bottom for a low/sell-side sweep. |
+| `InpSweepCircleColor` | `clrGold` | Circle colour. |
+| `InpSweepCircleCode` | `159` | Circle symbol (Wingdings; `159` = dot, `108` = larger filled circle). |
+| `InpSweepCircleSize` | `2` | Circle base size (scaled up on higher timeframes if `InpScaleByTF`). |
 
 ### Buy / Sell signals
 | Input | Default | Meaning |
 |---|---|---|
 | `InpShowSignals` | `true` | Draw the prominent BUY/SELL signals. |
-| `InpShowSweeps` | `true` | Draw the raw sweep markers + swept-level lines (turn off for a BUY/SELL-only chart). |
+| `InpShowSweeps` | `false` | Draw the verbose sweep arrows + labels + swept-level lines. Off by default — the circles replace them. |
 | `InpSignalStrongClose` | `true` | Only signal when the sweep closes in the reversal half of its range. |
 | `InpBuyColor` | `clrAqua` | BUY colour ("lime blue" — set to whatever you like, e.g. `clrDodgerBlue`, `clrLime`). |
 | `InpSellColor` | `clrRed` | SELL colour. |
@@ -200,7 +214,7 @@ repaint*. The mark, once printed, never moves.
 ### Fair Value Gaps (chart timeframe)
 | Input | Default | Meaning |
 |---|---|---|
-| `InpShowFVG` | `true` | Draw Fair Value Gaps. |
+| `InpShowFVG` | `false` | Draw Fair Value Gaps (off by default; the engine still runs when on). |
 | `InpShowFakeFVG` | `true` | Also draw fake (weak) FVGs. |
 | `InpATRPeriod` | `14` | ATR period used as the displacement / gap reference. |
 | `InpDispATR` | `1.2` | REAL: middle-candle range ≥ this × ATR. |
@@ -225,16 +239,20 @@ repaint*. The mark, once printed, never moves.
 
 ---
 
-## 6. Reading the chart
+## 6. Reading the chart (default clean view)
 
-* `H4 BSL` with a down arrow above a candle → H4 buy-side liquidity was swept (bearish pressure).
-* `M5 SSL` with an up arrow below a candle → M5 sell-side liquidity was swept (bullish pressure).
-* A coloured line at the arrow's price is the exact **level that was swept**.
-* A filled green/red box labelled `FVG` (or `FVG+sweep`) is a **real** FVG; a dotted box labelled
-  `fvg?` is a **fake** one.
+* A **gold circle on top of a candle** → a buy-side (high) liquidity sweep occurred there.
+* A **gold circle under a candle** → a sell-side (low) liquidity sweep occurred there.
+* Circles appear for **every** sweep on every enabled timeframe (bigger on higher timeframes) — they
+  show you where liquidity was taken, nothing more.
+* A big aqua **`<TF> BUY`** below a candle / red **`<TF> SELL`** above a candle → a *confirmed*,
+  tradeable sweep on that timeframe (it passed the quality filters).
 
-**Confluence is the point:** the strongest setups are when a **lower-timeframe** sweep happens
-right **into a higher-timeframe** swept level or FVG. See the gold scalping strategy
+So: **circles = all sweeps; BUY/SELL = the ones worth trading.** Turn on `InpShowSweeps` /
+`InpShowFVG` if you also want the verbose levels or the FVG boxes back.
+
+**Confluence is the point:** the strongest setups are when a **lower-timeframe** BUY/SELL fires
+right **into a higher-timeframe** sweep circle (liquidity level). See the gold scalping strategy
 (`Gold_Scalping_Strategy.md`).
 
 ---

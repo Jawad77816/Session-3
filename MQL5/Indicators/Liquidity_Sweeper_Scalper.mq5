@@ -1,29 +1,33 @@
 //+------------------------------------------------------------------+
-//|                                       MD5_Liquidity_Sweep.mq5     |
-//|            MD5 Multi-Timeframe Liquidity Sweep + Fair Value Gap   |
+//|                                  Liquidity_Sweeper_Scalper.mq5    |
+//|                 Liquidity Sweeper Scalper (MTF sweeps + signals)  |
 //|                                                                  |
 //|  NON-REPAINTING MetaTrader 5 custom indicator.                   |
 //|                                                                  |
-//|  MULTI-TIMEFRAME LIQUIDITY SWEEPS                                |
+//|  CLEAN CHART BY DEFAULT                                          |
 //|  --------------------------------------------------------------  |
-//|  Attach it to ONE chart (e.g. M1) and it detects and labels the  |
-//|  liquidity sweeps of every enabled timeframe at once:            |
-//|  M1, M5, M15, M30, H1, H4, D1 (W1 optional).                     |
+//|  On the chart you see only two things:                           |
+//|   1. A small CIRCLE on every liquidity sweep, on every enabled    |
+//|      timeframe (M1..D1) - at the TOP of the candle for a buy-side |
+//|      (high) sweep, at the BOTTOM for a sell-side (low) sweep.     |
+//|   2. Prominent BUY / SELL signals (the confirmed, tradeable       |
+//|      sweeps) - BUY in aqua below the bar, SELL in red above it.   |
 //|                                                                  |
+//|  Everything else still runs in the backend but is HIDDEN by       |
+//|  default and can be switched back on:                            |
+//|   - the verbose BSL/SSL arrows + labels + swept-level lines       |
+//|     (InpShowSweeps)                                              |
+//|   - Fair Value Gaps, real vs fake (InpShowFVG)                   |
+//|                                                                  |
+//|  LIQUIDITY SWEEPS (the engine)                                  |
+//|  --------------------------------------------------------------  |
 //|  * Buy-side (BSL) sweep  -> price wicks ABOVE a prior swing HIGH  |
-//|    (buy stops) and CLOSES back BELOW it   -> bearish grab,        |
-//|    DOWN arrow above the bar, label "<TF> BSL".                    |
+//|    (buy stops) and CLOSES back BELOW it  -> bearish grab -> SELL. |
 //|  * Sell-side (SSL) sweep -> price wicks BELOW a prior swing LOW   |
-//|    (sell stops) and CLOSES back ABOVE it  -> bullish grab,        |
-//|    UP arrow below the bar, label "<TF> SSL".                      |
-//|  * The swept LEVEL is drawn as a line from the swing to the       |
-//|    sweep bar. Higher timeframes draw bigger / bolder markers.     |
-//|                                                                  |
-//|  FAIR VALUE GAPS (chart timeframe)                               |
-//|  --------------------------------------------------------------  |
-//|  3-candle imbalance classified REAL vs FAKE from displacement    |
-//|  (middle-candle range vs ATR), body dominance and gap size;       |
-//|  tagged "+sweep" when it forms right after a sweep.               |
+//|    (sell stops) and CLOSES back ABOVE it -> bullish grab -> BUY.  |
+//|  A BUY/SELL only prints once the quality filters pass (close in   |
+//|  the reversal half + a follow-through candle breaks the sweep's   |
+//|  extreme), so weak counter-trend sweeps are dropped.             |
 //|                                                                  |
 //|  WHY IT DOES NOT REPAINT                                         |
 //|  --------------------------------------------------------------  |
@@ -34,10 +38,10 @@
 //|  sweep therefore appears when that TF's candle closes             |
 //|  (confirmation lag) -- that is honest lag, not repainting.        |
 //+------------------------------------------------------------------+
-#property copyright "MD5 Liquidity Sweep + FVG"
+#property copyright "Liquidity Sweeper Scalper"
 #property link      ""
-#property version   "2.00"
-#property description "Non-repaint MULTI-TIMEFRAME ICT liquidity sweeps + Real/Fake Fair Value Gaps"
+#property version   "3.00"
+#property description "Non-repaint MTF liquidity sweeps: sweep circles + confirmed BUY/SELL signals"
 #property indicator_chart_window
 #property indicator_buffers 0
 #property indicator_plots   0
@@ -63,9 +67,15 @@ input int    InpLabelFontSize   = 8;              // Base label font size
 input color  InpBSLColor        = clrTomato;      // Buy-side (high) sweep colour
 input color  InpSSLColor        = clrDodgerBlue;  // Sell-side (low) sweep colour
 
+input group "=== Liquidity sweep circles ==="
+input bool   InpShowSweepCircle = true;           // Mark every sweep with a circle (top/bottom of candle)
+input color  InpSweepCircleColor= clrGold;        // Sweep circle colour
+input int    InpSweepCircleCode = 159;            // Circle symbol (Wingdings: 159 dot, 108 big circle)
+input int    InpSweepCircleSize = 2;              // Circle size (base width)
+
 input group "=== Buy / Sell signals (from the strategy) ==="
 input bool   InpShowSignals     = true;           // Show prominent BUY/SELL signals
-input bool   InpShowSweeps      = true;           // Show the raw sweep markers + levels
+input bool   InpShowSweeps      = false;          // Show the verbose sweep arrows+labels+levels (off: use circles)
 input bool   InpSignalStrongClose = true;         // Require sweep to close in the reversal half
 input color  InpBuyColor        = clrAqua;        // BUY signal colour ("lime blue" - edit to taste)
 input color  InpSellColor       = clrRed;         // SELL signal colour
@@ -78,8 +88,8 @@ input bool   InpUseConfirm      = true;           // Require follow-through: nex
 input bool   InpUseTrendFilter  = false;          // Only signal with the timeframe's EMA trend
 input int    InpTrendEMAPeriod  = 50;             // EMA period for the trend filter
 
-input group "=== Fair Value Gaps (chart timeframe) ==="
-input bool   InpShowFVG         = true;           // Show Fair Value Gaps
+input group "=== Fair Value Gaps (chart timeframe, hidden by default) ==="
+input bool   InpShowFVG         = false;          // Show Fair Value Gaps (off by default)
 input bool   InpShowFakeFVG     = true;           // Also show 'fake' (weak) FVGs
 input int    InpATRPeriod       = 14;             // ATR period (displacement reference)
 input double InpDispATR         = 1.2;            // REAL: middle candle range >= x * ATR
@@ -98,7 +108,7 @@ input bool   InpAlertPopup      = false;          // Popup alert on a fresh swee
 input bool   InpAlertPush       = false;          // Push notification on a fresh sweep (any TF)
 
 input group "=== General ==="
-input string InpPrefix          = "MD5LS_";       // Chart-object name prefix
+input string InpPrefix          = "LSS_";         // Chart-object name prefix
 
 //==================== GLOBALS ======================================
 double  g_atr[];                     // ATR of the chart timeframe (FVG displacement reference)
@@ -358,6 +368,25 @@ void DrawSignal(const string tn, const ENUM_TIMEFRAMES tf, const bool isBuy,
   }
 
 //+------------------------------------------------------------------+
+//| Draw a small circle marking a liquidity sweep                    |
+//|   high (buy-side) sweep -> circle at the TOP of the candle        |
+//|   low  (sell-side) sweep -> circle at the BOTTOM of the candle    |
+//+------------------------------------------------------------------+
+void DrawCircle(const string tn, const ENUM_TIMEFRAMES tf, const int dir,
+                const datetime tSweep, const double hj, const double lj)
+  {
+   double rng = hj - lj;
+   if(rng <= 0.0) rng = MathMax(MathAbs(hj)*0.0003, _Point*10);
+   double off  = rng * 0.25;
+   bool   high = (dir > 0);                              // buy-side (high) sweep -> top
+   double ap   = (high ? hj+off : lj-off);
+   int    w    = InpSweepCircleSize + (InpScaleByTF ? TFRank(tf)/2 : 0);
+   int    anc  = (high ? ANCHOR_BOTTOM : ANCHOR_TOP);
+   string base = InpPrefix + tn + "_CIR_" + (high ? "H" : "L") + "_" + (string)(long)tSweep;
+   DrawArrowObj(base, tSweep, ap, InpSweepCircleCode, InpSweepCircleColor, w, anc);
+  }
+
+//+------------------------------------------------------------------+
 //| Scan ONE timeframe for pivots + sweeps (closed bars only)        |
 //+------------------------------------------------------------------+
 void ScanTF(const int ti)
@@ -455,7 +484,11 @@ void ScanTF(const int ti)
          //--- current-TF context for the FVG "+sweep" tag
          if(isCur) { if(sdir>0) PushTime(g_curBSL, T[j]); else PushTime(g_curSSL, T[j]); }
 
-         //--- raw sweep marker (unfiltered - it shows the liquidity event itself)
+         //--- circle highlight on every sweep (the clean default view)
+         if(InpShowSweepCircle)
+            DrawCircle(tn, tf, sdir, T[j], hj, lj);
+
+         //--- verbose sweep marker (arrows + labels + level lines), hidden by default
          if(InpShowSweeps)
             DrawSweepMark(tn, tf, sdir, T[j], P, pTime[q], hj, lj);
 
@@ -565,7 +598,7 @@ int OnInit()
       return(INIT_FAILED);
      }
 
-   IndicatorSetString(INDICATOR_SHORTNAME, "MD5 MTF Liquidity Sweep + FVG");
+   IndicatorSetString(INDICATOR_SHORTNAME, "Liquidity Sweeper Scalper");
    ArrayResize(g_curBSL,0);
    ArrayResize(g_curSSL,0);
    return(INIT_SUCCEEDED);
