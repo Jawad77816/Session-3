@@ -57,6 +57,16 @@ input bool   InpTF_H4  = true;   // Scan H4 liquidity sweeps
 input bool   InpTF_D1  = true;   // Scan D1 liquidity sweeps
 input bool   InpTF_W1  = false;  // Scan W1 liquidity sweeps
 
+input group "=== Which timeframes' BUY/SELL signals to SHOW ==="
+input bool   InpSig_M1  = false; // Show M1 BUY/SELL signals (off: M1 is noisiest)
+input bool   InpSig_M5  = true;  // Show M5 BUY/SELL signals
+input bool   InpSig_M15 = true;  // Show M15 BUY/SELL signals
+input bool   InpSig_M30 = true;  // Show M30 BUY/SELL signals
+input bool   InpSig_H1  = true;  // Show H1 BUY/SELL signals
+input bool   InpSig_H4  = true;  // Show H4 BUY/SELL signals
+input bool   InpSig_D1  = true;  // Show D1 BUY/SELL signals
+input bool   InpSig_W1  = true;  // Show W1 BUY/SELL signals
+
 input group "=== Liquidity / Sweep ==="
 input int    InpPivotLength     = 10;             // Swing pivot strength (bars each side, per TF)
 input int    InpBarsPerTF       = 500;            // History bars scanned per timeframe
@@ -81,7 +91,10 @@ input color  InpBuyColor        = clrAqua;        // BUY signal colour ("lime bl
 input color  InpSellColor       = clrRed;         // SELL signal colour
 input int    InpSignalWidth     = 4;              // BUY/SELL arrow size (prominence)
 input int    InpSignalFontSize  = 12;             // BUY/SELL label font size
-input double InpSignalExtraOffsetFrac = 0.9;      // Extra distance beyond the sweep marker
+input double InpSignalGapATR    = 0.4;            // BUY/SELL gap from candle (x chart ATR) - keeps it tight
+input double InpSignalStaggerATR= 0.3;            // Extra separation per timeframe (avoids overlap)
+input double InpLabelGapATR     = 0.8;            // Gap from arrow to its text label (x chart ATR)
+input double InpCircleGapATR    = 0.25;           // Sweep circle gap from the candle (x chart ATR)
 
 input group "=== Signal quality filters ==="
 input bool   InpUseConfirm      = true;           // Require follow-through: next candle breaks the sweep extreme
@@ -116,7 +129,9 @@ int     g_atrHandle = INVALID_HANDLE;
 
 ENUM_TIMEFRAMES g_tfs[];             // enabled timeframes
 string          g_tfNames[];         // their short names ("M1".."W1")
+bool            g_sigOn[];           // per-TF: display BUY/SELL signals?
 int             g_tfCount = 0;
+double          g_unit = 0.0;        // chart-TF ATR used as the on-screen spacing unit
 
 datetime g_lastBar[];                // last seen bar-0 time per TF (new-bar detection)
 datetime g_lastAlertBSL[];           // last alerted BSL sweep time per TF (de-dupe)
@@ -154,17 +169,19 @@ int TFWidth(const ENUM_TIMEFRAMES tf)
    return(1 + TFRank(tf)/2);                        // 1..4
   }
 
-void AddTF(const ENUM_TIMEFRAMES tf, const bool on)
+void AddTF(const ENUM_TIMEFRAMES tf, const bool scanOn, const bool sigOn)
   {
-   if(!on) return;
+   if(!scanOn) return;
    int s = g_tfCount;
    ArrayResize(g_tfs,        s+1);
    ArrayResize(g_tfNames,    s+1);
+   ArrayResize(g_sigOn,      s+1);
    ArrayResize(g_lastBar,    s+1);
    ArrayResize(g_lastAlertBSL,s+1);
    ArrayResize(g_lastAlertSSL,s+1);
    g_tfs[s]         = tf;
    g_tfNames[s]     = TFName(tf);
+   g_sigOn[s]       = sigOn;
    g_lastBar[s]     = 0;
    g_lastAlertBSL[s]= 0;
    g_lastAlertSSL[s]= 0;
@@ -349,12 +366,14 @@ void DrawSweepMark(const string tn, const ENUM_TIMEFRAMES tf, const int dir,
 void DrawSignal(const string tn, const ENUM_TIMEFRAMES tf, const bool isBuy,
                 const datetime tSweep, const double hj, const double lj)
   {
-   double rng = hj - lj;
-   if(rng <= 0.0) rng = MathMax(MathAbs(hj)*0.0005, _Point*10);
-   double off = rng * (InpArrowOffsetFrac + InpSignalExtraOffsetFrac);
-   color  col = (isBuy ? InpBuyColor : InpSellColor);
-   int    w   = InpSignalWidth    + (InpScaleByTF ? TFRank(tf)/2 : 0);
-   int    fs  = InpSignalFontSize + (InpScaleByTF ? MathMin(TFRank(tf),6) : 0);
+   //--- spacing in chart-ATR units (NOT the sweep candle's own range), so a big
+   //    higher-TF candle no longer flings its signal far from the price
+   double unit = (g_unit > 0.0 ? g_unit : (hj-lj > 0.0 ? (hj-lj) : _Point*10));
+   double stag = (InpScaleByTF ? TFRank(tf)*InpSignalStaggerATR : 0.0);
+   double off  = (InpSignalGapATR + stag) * unit;      // candle -> arrow
+   color  col  = (isBuy ? InpBuyColor : InpSellColor);
+   int    w    = InpSignalWidth    + (InpScaleByTF ? TFRank(tf)/2 : 0);
+   int    fs   = InpSignalFontSize + (InpScaleByTF ? MathMin(TFRank(tf),6) : 0);
 
    double ap      = (isBuy ? lj-off : hj+off);
    int    code    = (isBuy ? 233 : 234);               // up arrow / down arrow
@@ -362,7 +381,7 @@ void DrawSignal(const string tn, const ENUM_TIMEFRAMES tf, const bool isBuy,
    string base    = InpPrefix + tn + "_SIG_" + (isBuy ? "BUY" : "SELL") + "_" + (string)(long)tSweep;
    DrawArrowObj(base, tSweep, ap, code, col, w, aAnchor);
 
-   double lp = (isBuy ? ap-off*0.5 : ap+off*0.5);
+   double lp = (isBuy ? ap - InpLabelGapATR*unit : ap + InpLabelGapATR*unit);  // arrow -> label
    ENUM_ANCHOR_POINT tAnchor = (isBuy ? ANCHOR_UPPER : ANCHOR_LOWER);
    DrawBigText(base+"_t", tSweep, lp, tn+" "+(isBuy ? "BUY" : "SELL"), col, fs, tAnchor);
   }
@@ -375,9 +394,8 @@ void DrawSignal(const string tn, const ENUM_TIMEFRAMES tf, const bool isBuy,
 void DrawCircle(const string tn, const ENUM_TIMEFRAMES tf, const int dir,
                 const datetime tSweep, const double hj, const double lj)
   {
-   double rng = hj - lj;
-   if(rng <= 0.0) rng = MathMax(MathAbs(hj)*0.0003, _Point*10);
-   double off  = rng * 0.25;
+   double unit = (g_unit > 0.0 ? g_unit : (hj-lj > 0.0 ? (hj-lj) : _Point*10));
+   double off  = InpCircleGapATR * unit;                // small, consistent gap from the candle
    bool   high = (dir > 0);                              // buy-side (high) sweep -> top
    double ap   = (high ? hj+off : lj-off);
    int    w    = InpSweepCircleSize + (InpScaleByTF ? TFRank(tf)/2 : 0);
@@ -510,13 +528,14 @@ void ScanTF(const int ti)
             if(isBuy ? !(cj > ema) : !(cj < ema)) ok = false;
            }
 
-         if(InpShowSignals && ok)
+         bool showSig = (InpShowSignals && g_sigOn[ti]);   // this TF's signals enabled?
+         if(showSig && ok)
             DrawSignal(tn, tf, isBuy, T[j], hj, lj);
 
          //--- alert when the deciding bar is the newest closed bar
          bool sigLive = (InpUseConfirm ? (j==2) : (j==1)) && !firstScan;
          if(InpShowSignals)
-           { if(ok && sigLive) FireAlert(ti, tn, sdir, P, T[j], true); }
+           { if(showSig && ok && sigLive) FireAlert(ti, tn, sdir, P, T[j], true); }
          else
            { if(j==1 && !firstScan) FireAlert(ti, tn, sdir, P, T[j], false); }
         }
@@ -579,16 +598,16 @@ void CheckFVG(const int i, const datetime &time[], const double &o[],
 int OnInit()
   {
    g_tfCount = 0;
-   ArrayResize(g_tfs,0); ArrayResize(g_tfNames,0); ArrayResize(g_lastBar,0);
-   ArrayResize(g_lastAlertBSL,0); ArrayResize(g_lastAlertSSL,0);
-   AddTF(PERIOD_M1 , InpTF_M1);
-   AddTF(PERIOD_M5 , InpTF_M5);
-   AddTF(PERIOD_M15, InpTF_M15);
-   AddTF(PERIOD_M30, InpTF_M30);
-   AddTF(PERIOD_H1 , InpTF_H1);
-   AddTF(PERIOD_H4 , InpTF_H4);
-   AddTF(PERIOD_D1 , InpTF_D1);
-   AddTF(PERIOD_W1 , InpTF_W1);
+   ArrayResize(g_tfs,0); ArrayResize(g_tfNames,0); ArrayResize(g_sigOn,0);
+   ArrayResize(g_lastBar,0); ArrayResize(g_lastAlertBSL,0); ArrayResize(g_lastAlertSSL,0);
+   AddTF(PERIOD_M1 , InpTF_M1 , InpSig_M1);
+   AddTF(PERIOD_M5 , InpTF_M5 , InpSig_M5);
+   AddTF(PERIOD_M15, InpTF_M15, InpSig_M15);
+   AddTF(PERIOD_M30, InpTF_M30, InpSig_M30);
+   AddTF(PERIOD_H1 , InpTF_H1 , InpSig_H1);
+   AddTF(PERIOD_H4 , InpTF_H4 , InpSig_H4);
+   AddTF(PERIOD_D1 , InpTF_D1 , InpSig_D1);
+   AddTF(PERIOD_W1 , InpTF_W1 , InpSig_W1);
 
    ArraySetAsSeries(g_atr, false);
    g_atrHandle = iATR(_Symbol, _Period, InpATRPeriod);
@@ -632,9 +651,13 @@ int OnCalculate(const int rates_total,
    int warmup = 2*InpPivotLength + 3;
    if(rates_total < warmup + 2) return(0);
 
-   //--- ATR of the chart timeframe (for FVG), aligned g_atr[i] <-> bar i
+   //--- ATR of the chart timeframe (for FVG + consistent on-screen spacing)
    if(BarsCalculated(g_atrHandle) < rates_total) return(prev_calculated);
    if(CopyBuffer(g_atrHandle, 0, 0, rates_total, g_atr) < rates_total) return(prev_calculated);
+
+   //--- spacing unit = chart-timeframe ATR (same gap on screen for every TF's signal)
+   g_unit = 0.0;
+   if(rates_total >= 2 && g_atr[rates_total-2] > 0.0) g_unit = g_atr[rates_total-2];
 
    bool fullBuild = (prev_calculated == 0);
    if(fullBuild)

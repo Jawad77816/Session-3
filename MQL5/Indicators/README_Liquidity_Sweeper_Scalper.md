@@ -168,9 +168,16 @@ repaint*. The mark, once printed, never moves.
 
 ## 5. Inputs
 
-### Timeframes to scan for sweeps
+### Timeframes to scan for sweeps (controls sweep circles + detection)
 `InpTF_M1, InpTF_M5, InpTF_M15, InpTF_M30, InpTF_H1, InpTF_H4, InpTF_D1` — all `true` by default.
-`InpTF_W1` — `false` by default. Turn off the ones you don't want.
+`InpTF_W1` — `false`. A timeframe that is off here is not scanned at all (no circles, no signals).
+
+### Which timeframes' BUY/SELL signals to SHOW
+Independent of the chart you attach it to, pick which timeframes may print a **BUY/SELL** signal:
+`InpSig_M5, InpSig_M15, InpSig_M30, InpSig_H1, InpSig_H4, InpSig_D1, InpSig_W1` — `true` by default;
+**`InpSig_M1` — `false`** by default (M1 is the noisiest, so its signals are hidden — its sweep
+circles still show). A timeframe must be **scanned** (above) *and* enabled here for its signals to
+appear.
 
 ### Liquidity / Sweep
 | Input | Default | Meaning |
@@ -202,7 +209,17 @@ repaint*. The mark, once printed, never moves.
 | `InpSellColor` | `clrRed` | SELL colour. |
 | `InpSignalWidth` | `4` | BUY/SELL arrow size (prominence). |
 | `InpSignalFontSize` | `12` | BUY/SELL label font size. |
-| `InpSignalExtraOffsetFrac` | `0.9` | Extra distance the signal sits beyond the raw sweep marker. |
+
+### Spacing (distance from the candle, × chart ATR)
+All spacing is now measured in **chart-timeframe ATR**, not the sweep candle's own range — so a big
+M30/H1 candle no longer throws its signal far away; every timeframe sits a small, consistent gap
+from price.
+| Input | Default | Meaning |
+|---|---|---|
+| `InpSignalGapATR` | `0.4` | Gap from the candle to the BUY/SELL arrow. Lower = tighter. |
+| `InpSignalStaggerATR` | `0.3` | Extra separation **per timeframe** so e.g. an M5 and M30 signal on the same candle don't overlap (small = closer together). |
+| `InpLabelGapATR` | `0.8` | Gap from the arrow to its text label (raise if the label overlaps the arrow). |
+| `InpCircleGapATR` | `0.25` | Gap from the candle to the sweep circle. |
 
 ### Signal quality filters
 | Input | Default | Meaning |
