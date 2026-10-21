@@ -85,6 +85,25 @@ tag (the highest-probability case: *FVG formed right after liquidity was taken*)
 * Higher timeframes get **wider arrows, bigger labels, thicker level lines** (toggle with
   `InpScaleBy​TF`), so a D1 sweep is visually louder than an M1 sweep.
 
+### Buy / Sell signals (the strategy trigger)
+On top of the raw sweep markers, the indicator prints **prominent, per-timeframe BUY / SELL
+signals** straight from the gold-scalping logic:
+
+* **BUY** (blue/aqua, up arrow below the bar, bold `<TF> BUY`) = a **sell-side sweep reclaimed** —
+  price wicked below a swing low and closed back above it (bullish grab).
+* **SELL** (red, down arrow above the bar, bold `<TF> SELL`) = a **buy-side sweep reclaimed** —
+  price wicked above a swing high and closed back below it (bearish grab).
+
+They are multi-timeframe exactly like the sweeps: on an M1 chart you get `M1 BUY/SELL`,
+`M5 BUY/SELL`, `H1 BUY/SELL`, etc., with higher timeframes drawn bigger. By default a signal only
+prints when the sweep candle **closes in the reversal half of its range** (`InpSignalStrongClose`),
+which filters out weak, non-committal sweeps. Turn the raw sweep layer off (`InpShowSweeps = false`)
+for a clean BUY/SELL-only chart.
+
+> A signal is a *trigger to look*, not a blind entry. The highest-probability ones line up with the
+> higher-timeframe bias, land into a higher-TF level, and leave a Real FVG — see
+> `Gold_Scalping_Strategy.md`.
+
 ### Timeframe confirmation lag (important)
 A higher-timeframe sweep **appears only when that timeframe's candle closes**. On M1 you will see
 an H4 sweep up to ~4 hours after the wick happened — because until the H4 candle closes, there is
@@ -138,6 +157,18 @@ repaint*. The mark, once printed, never moves.
 | `InpLabelFontSize` | `8` | Base label font size. |
 | `InpBSLColor` | `clrTomato` | Buy-side sweep colour (all timeframes). |
 | `InpSSLColor` | `clrDodgerBlue` | Sell-side sweep colour (all timeframes). |
+
+### Buy / Sell signals
+| Input | Default | Meaning |
+|---|---|---|
+| `InpShowSignals` | `true` | Draw the prominent BUY/SELL signals. |
+| `InpShowSweeps` | `true` | Draw the raw sweep markers + swept-level lines (turn off for a BUY/SELL-only chart). |
+| `InpSignalStrongClose` | `true` | Only signal when the sweep closes in the reversal half of its range. |
+| `InpBuyColor` | `clrAqua` | BUY colour ("lime blue" — set to whatever you like, e.g. `clrDodgerBlue`, `clrLime`). |
+| `InpSellColor` | `clrRed` | SELL colour. |
+| `InpSignalWidth` | `4` | BUY/SELL arrow size (prominence). |
+| `InpSignalFontSize` | `12` | BUY/SELL label font size. |
+| `InpSignalExtraOffsetFrac` | `0.9` | Extra distance the signal sits beyond the raw sweep marker. |
 
 ### Fair Value Gaps (chart timeframe)
 | Input | Default | Meaning |

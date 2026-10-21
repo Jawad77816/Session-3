@@ -63,6 +63,16 @@ input int    InpLabelFontSize   = 8;              // Base label font size
 input color  InpBSLColor        = clrTomato;      // Buy-side (high) sweep colour
 input color  InpSSLColor        = clrDodgerBlue;  // Sell-side (low) sweep colour
 
+input group "=== Buy / Sell signals (from the strategy) ==="
+input bool   InpShowSignals     = true;           // Show prominent BUY/SELL signals
+input bool   InpShowSweeps      = true;           // Show the raw sweep markers + levels
+input bool   InpSignalStrongClose = true;         // Require sweep to close in the reversal half
+input color  InpBuyColor        = clrAqua;        // BUY signal colour ("lime blue" - edit to taste)
+input color  InpSellColor       = clrRed;         // SELL signal colour
+input int    InpSignalWidth     = 4;              // BUY/SELL arrow size (prominence)
+input int    InpSignalFontSize  = 12;             // BUY/SELL label font size
+input double InpSignalExtraOffsetFrac = 0.9;      // Extra distance beyond the sweep marker
+
 input group "=== Fair Value Gaps (chart timeframe) ==="
 input bool   InpShowFVG         = true;           // Show Fair Value Gaps
 input bool   InpShowFakeFVG     = true;           // Also show 'fake' (weak) FVGs
@@ -236,10 +246,38 @@ void DrawRectObj(const string name, datetime t1, double p1, datetime t2, double 
   }
 
 //+------------------------------------------------------------------+
-//| Alert for a freshly-closed sweep (de-duped per TF + side)        |
+//| Did the sweep candle close in the reversal half of its range?    |
 //+------------------------------------------------------------------+
-void FireSweepAlert(const int ti, const string tn, const int dir,
-                    const double level, const datetime tSweep)
+bool FavorableClose(const bool isBuy, const double h, const double l, const double c)
+  {
+   double mid = (h + l) * 0.5;
+   return(isBuy ? (c >= mid) : (c <= mid));
+  }
+
+//+------------------------------------------------------------------+
+//| Bold text (used for the prominent BUY/SELL labels)               |
+//+------------------------------------------------------------------+
+void DrawBigText(const string name, datetime t, double price, const string txt,
+                 color clr, int fontsize, ENUM_ANCHOR_POINT anchor)
+  {
+   if(ObjectFind(0,name) < 0)
+      ObjectCreate(0,name,OBJ_TEXT,0,t,price);
+   ObjectSetString (0,name,OBJPROP_TEXT,txt);
+   ObjectSetString (0,name,OBJPROP_FONT,"Arial Black");
+   ObjectSetInteger(0,name,OBJPROP_FONTSIZE,fontsize);
+   ObjectSetInteger(0,name,OBJPROP_COLOR,clr);
+   ObjectSetInteger(0,name,OBJPROP_ANCHOR,anchor);
+   ObjectSetInteger(0,name,OBJPROP_SELECTABLE,false);
+   ObjectSetInteger(0,name,OBJPROP_HIDDEN,true);
+   ObjectSetInteger(0,name,OBJPROP_TIME ,0,t);
+   ObjectSetDouble (0,name,OBJPROP_PRICE,0,price);
+  }
+
+//+------------------------------------------------------------------+
+//| Alert for a fresh signal / sweep (de-duped per TF + side)        |
+//+------------------------------------------------------------------+
+void FireAlert(const int ti, const string tn, const int dir,
+               const double level, const datetime tSweep, const bool isSignal)
   {
    if(!InpAlertPopup && !InpAlertPush) return;
    if(dir > 0)
@@ -252,18 +290,20 @@ void FireSweepAlert(const int ti, const string tn, const int dir,
       if(tSweep <= g_lastAlertSSL[ti]) return;
       g_lastAlertSSL[ti] = tSweep;
      }
-   string side = (dir>0 ? "BUY-side (bearish)" : "SELL-side (bullish)");
-   string msg  = _Symbol + " " + tn + ": " + side + " liquidity sweep @ " + DoubleToString(level,_Digits);
+   bool   isBuy = (dir < 0);
+   string what  = isSignal ? (isBuy ? "BUY signal"  : "SELL signal")
+                           : (isBuy ? "sell-side liquidity sweep" : "buy-side liquidity sweep");
+   string msg   = _Symbol + " " + tn + ": " + what + " @ " + DoubleToString(level,_Digits);
    if(InpAlertPopup) Alert(msg);
    if(InpAlertPush)  SendNotification(msg);
   }
 
 //+------------------------------------------------------------------+
-//| Draw one sweep (arrow + label + swept level)                     |
+//| Draw the raw sweep marker (arrow + TF label + swept level)       |
 //+------------------------------------------------------------------+
-void DrawSweep(const int ti, const string tn, const ENUM_TIMEFRAMES tf, const int dir,
-               const datetime tSweep, const double level, const datetime tPivot,
-               const double hj, const double lj, const bool live)
+void DrawSweepMark(const string tn, const ENUM_TIMEFRAMES tf, const int dir,
+                   const datetime tSweep, const double level, const datetime tPivot,
+                   const double hj, const double lj)
   {
    double rng = hj - lj;
    if(rng <= 0.0) rng = MathMax(level*0.0005, _Point*10);
@@ -284,8 +324,58 @@ void DrawSweep(const int ti, const string tn, const ENUM_TIMEFRAMES tf, const in
 
    if(InpShowSweptLevel)
       DrawSegObj(base+"_lvl", tPivot, level, tSweep, level, col, w, STYLE_SOLID);
+  }
 
-   if(live) FireSweepAlert(ti, tn, dir, level, tSweep);
+//+------------------------------------------------------------------+
+//| Draw the prominent BUY/SELL signal (the strategy trigger)        |
+//|   BUY  = sell-side liquidity swept & reclaimed  (bullish)        |
+//|   SELL = buy-side  liquidity swept & reclaimed  (bearish)        |
+//+------------------------------------------------------------------+
+void DrawSignal(const string tn, const ENUM_TIMEFRAMES tf, const bool isBuy,
+                const datetime tSweep, const double hj, const double lj)
+  {
+   double rng = hj - lj;
+   if(rng <= 0.0) rng = MathMax(MathAbs(hj)*0.0005, _Point*10);
+   double off = rng * (InpArrowOffsetFrac + InpSignalExtraOffsetFrac);
+   color  col = (isBuy ? InpBuyColor : InpSellColor);
+   int    w   = InpSignalWidth    + (InpScaleByTF ? TFRank(tf)/2 : 0);
+   int    fs  = InpSignalFontSize + (InpScaleByTF ? MathMin(TFRank(tf),6) : 0);
+
+   double ap      = (isBuy ? lj-off : hj+off);
+   int    code    = (isBuy ? 233 : 234);               // up arrow / down arrow
+   int    aAnchor = (isBuy ? ANCHOR_TOP : ANCHOR_BOTTOM);
+   string base    = InpPrefix + tn + "_SIG_" + (isBuy ? "BUY" : "SELL") + "_" + (string)(long)tSweep;
+   DrawArrowObj(base, tSweep, ap, code, col, w, aAnchor);
+
+   double lp = (isBuy ? ap-off*0.5 : ap+off*0.5);
+   ENUM_ANCHOR_POINT tAnchor = (isBuy ? ANCHOR_UPPER : ANCHOR_LOWER);
+   DrawBigText(base+"_t", tSweep, lp, tn+" "+(isBuy ? "BUY" : "SELL"), col, fs, tAnchor);
+  }
+
+//+------------------------------------------------------------------+
+//| Handle a confirmed sweep: context + marker + signal + alert      |
+//+------------------------------------------------------------------+
+void OnSweepHit(const int ti, const string tn, const ENUM_TIMEFRAMES tf, const int dir,
+                const datetime tSweep, const double level, const datetime tPivot,
+                const double hj, const double lj, const double cj,
+                const bool isCur, const bool live)
+  {
+   if(isCur)
+     {
+      if(dir > 0) PushTime(g_curBSL, tSweep);
+      else        PushTime(g_curSSL, tSweep);
+     }
+
+   if(InpShowSweeps)
+      DrawSweepMark(tn, tf, dir, tSweep, level, tPivot, hj, lj);
+
+   bool isBuy = (dir < 0);                              // sell-side sweep reclaimed -> BUY
+   bool pass  = (!InpSignalStrongClose || FavorableClose(isBuy, hj, lj, cj));
+   if(InpShowSignals && pass)
+      DrawSignal(tn, tf, isBuy, tSweep, hj, lj);
+
+   if(live)
+      FireAlert(ti, tn, dir, level, tSweep, (InpShowSignals && pass));
   }
 
 //+------------------------------------------------------------------+
@@ -369,20 +459,18 @@ void ScanTF(const int ti)
          double P = pPrice[q];
          if(pDir[q] > 0)
            {
-            if(hj > P && cj < P)                     // wick above a high, close back below
+            if(hj > P && cj < P)                     // wick above a high, close back below -> SELL
               {
                pSwept[q]=true;
-               DrawSweep(ti, tn, tf, +1, T[j], P, pTime[q], hj, lj, live);
-               if(isCur) PushTime(g_curBSL, T[j]);
+               OnSweepHit(ti, tn, tf, +1, T[j], P, pTime[q], hj, lj, cj, isCur, live);
               }
            }
          else
            {
-            if(lj < P && cj > P)                     // wick below a low, close back above
+            if(lj < P && cj > P)                     // wick below a low, close back above -> BUY
               {
                pSwept[q]=true;
-               DrawSweep(ti, tn, tf, -1, T[j], P, pTime[q], hj, lj, live);
-               if(isCur) PushTime(g_curSSL, T[j]);
+               OnSweepHit(ti, tn, tf, -1, T[j], P, pTime[q], hj, lj, cj, isCur, live);
               }
            }
         }
